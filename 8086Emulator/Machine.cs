@@ -23,9 +23,10 @@ namespace Masch._8086Emulator
     public Cpu Cpu { get; }
     public MemoryController MemoryController { get; }
     public Graphics Graphics { get; }
-    public Dictionary<int, IInternalDevice> Ports { get; }
     public ProgrammableInterruptController8259 Pic { get; private set; }
     public ProgrammableInterruptTimer8253 Pit { get; private set; }
+
+    public Dictionary<int, IInternalDevice> Ports { get; }
     public CancellationToken RebootCancellationToken => rebootCts.Token;
 
     public bool Running { get; set; }
@@ -78,7 +79,7 @@ namespace Masch._8086Emulator
     {
       Pic = new ProgrammableInterruptController8259();
       Pit = new ProgrammableInterruptTimer8253(Pic);
-      //RegisterInternalDevice(new DMAController8237());
+      RegisterInternalDevice(new DMAController8237());
       RegisterInternalDevice(Pic);
       RegisterInternalDevice(Pit);
       //RegisterInternalDevice(new GraphicController());

@@ -23,11 +23,13 @@ namespace Masch._8086Emulator
 
     public byte ReadByte(int offset)
     {
+      offset &= 0xFFFFF;
       return Memory[offset];
     }
 
     public ushort ReadWord(int offset)
     {
+      offset &= 0xFFFFF;
       return (ushort)(Memory[offset] | (Memory[offset + 1] << 8));
     }
 
@@ -47,12 +49,14 @@ namespace Masch._8086Emulator
 
     public void WriteByte(int offset, byte value)
     {
+      offset &= 0xFFFFF;
       Memory[offset] = value;
       if (registeredBlocks.TryGetValue(offset >> 8, out var callback)) { callback(offset, value); }
     }
 
     public void WriteWord(int offset, ushort value)
     {
+      offset &= 0xFFFFF;
       var lo = (byte)value;
       var hi = (byte)(value >> 8);
       Memory[offset] = lo;
