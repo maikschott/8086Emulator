@@ -10,7 +10,7 @@ namespace Masch._8086Emulator
 
     public MemoryController()
     {
-      Memory = new byte[1024 * 1024]; // who would ever need more?
+      Memory = new byte[SpecialOffset.HighMemoryArea]; // = 1MB, who would ever need more?
       registeredBlocks = new Dictionary<int, Action<int, byte>>();
     }
 

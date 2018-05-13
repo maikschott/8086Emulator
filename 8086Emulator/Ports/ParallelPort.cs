@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Masch._8086Emulator.Ports
 {
-  public class ParallelPort : IPort
+  public class ParallelPort : IInternalDevice
   {
     public IEnumerable<int> PortNumbers => Enumerable.Range(0x3BC, 3);
 

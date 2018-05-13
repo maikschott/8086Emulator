@@ -29,7 +29,7 @@ namespace Masch._8086Emulator
   public class Graphics
   {
     public Encoding Encoding;
-    public static int TextStartOfs = SpecialOffset.MonochromeText;
+    public static int TextStartOfs = SpecialOffset.StandardVideoMemory;
     private int columns;
     private int rows;
 

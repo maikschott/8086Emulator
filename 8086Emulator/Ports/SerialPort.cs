@@ -3,7 +3,7 @@ using System.Linq;
 
 namespace Masch._8086Emulator.Ports
 {
-  public class SerialPort : IPort
+  public class SerialPort : IInternalDevice
   {
     public IEnumerable<int> PortNumbers => Enumerable.Range(0x3F8, 8);
 

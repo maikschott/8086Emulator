@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Masch._8086Emulator.Ports
 {
-  public class GraphicController : IPort
+  public class GraphicController : IInternalDevice
   {
     private static readonly int[] mdaPorts = Enumerable.Range(0x3B0, 13).ToArray();
     private const int HerculesConfigurationSwitchRegister = 0x3BF;

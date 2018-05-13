@@ -3,7 +3,7 @@
 namespace Masch._8086Emulator.Ports
 {
   // port mapping: http://bochs.sourceforge.net/techspec/PORTS.LST
-  public interface IPort
+  public interface IInternalDevice
   {
     IEnumerable<int> PortNumbers { get; }
 

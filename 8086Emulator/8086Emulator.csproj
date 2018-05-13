@@ -47,9 +47,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Graphics.cs" />
+    <Compile Include="Irq.cs" />
     <Compile Include="Ports\FloppyDiskController.cs" />
     <Compile Include="Ports\GraphicController.cs" />
-    <Compile Include="Ports\IWordPort.cs" />
+    <Compile Include="Ports\I16BitInternalDevice.cs" />
     <Compile Include="Ports\ParallelPort.cs" />
     <Compile Include="Ports\ProgrammableInterruptController8259.cs" />
     <Compile Include="Cpu.cs" />
@@ -59,7 +60,7 @@
     <Compile Include="InterruptVector.cs" />
     <Compile Include="Keyboard.cs" />
     <Compile Include="Machine.cs" />
-    <Compile Include="Ports\IPort.cs" />
+    <Compile Include="Ports\IInternalDevice.cs" />
     <Compile Include="MemoryController.cs" />
     <Compile Include="Ports\ProgrammableInterruptTimer8253.cs" />
     <Compile Include="Ports\SerialPort.cs" />
@@ -70,6 +71,15 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="packages.config" />
+    <None Include="ROMs\basic.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="ROMs\bios.bin">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="ROMs\cp437.ttf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

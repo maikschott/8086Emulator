@@ -4,9 +4,13 @@ using System.Linq;
 
 namespace Masch._8086Emulator.Ports
 {
-  public class ProgrammableInterruptController8259 : IPort
+  public class ProgrammableInterruptController8259 : IInternalDevice
   {
     public IEnumerable<int> PortNumbers => Enumerable.Range(0x20, 2);
+
+    public void Invoke(Irq irq)
+    {
+    }
 
     public byte GetByte(int port)
     {

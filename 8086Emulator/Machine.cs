@@ -8,42 +8,55 @@ namespace Masch._8086Emulator
 {
   public class Machine
   {
+    private CancellationTokenSource rebootCts;
+
     public Machine()
     {
       MemoryController = new MemoryController();
       Cpu = new Cpu(this);
       Graphics = new Graphics(MemoryController);
-      Ports = new Dictionary<int, IPort>();
+      Ports = new Dictionary<int, IInternalDevice>();
 
-      ConnectPorts();
+      Reboot();
     }
 
     public Cpu Cpu { get; }
     public MemoryController MemoryController { get; }
     public Graphics Graphics { get; }
-    public Dictionary<int, IPort> Ports { get; }
+    public Dictionary<int, IInternalDevice> Ports { get; }
+    public ProgrammableInterruptController8259 Pic { get; private set; }
+    public ProgrammableInterruptTimer8253 Pit { get; private set; }
+    public CancellationToken RebootCancellationToken => rebootCts.Token;
 
     public bool Running { get; set; }
 
-    public void LoadBootstrapper(ushort segment, byte[] bytes)
+    public void LoadAndSetBootstrapper(int segment, byte[] bytes)
     {
       LoadProgram(segment, bytes);
 
       var ofs = SpecialOffset.BootStrapping;
       MemoryController.WriteByte(ofs++, 0xEA); // JMP FAR
       MemoryController.WriteWord(ofs += 2, 0); // offset
-      MemoryController.WriteWord(ofs, segment); // segment
+      MemoryController.WriteWord(ofs, (ushort)segment); // segment
     }
 
-    public void LoadProgram(ushort segment, byte[] bytes, int stackSize = 0x100)
+    public void LoadProgram(int segment, byte[] bytes, int stackSize = 0x100)
     {
-      Array.Copy(bytes, 0, MemoryController.Memory, segment * 16, bytes.Length);
+      if (segment < 0 || segment > ushort.MaxValue) { throw new ArgumentOutOfRangeException(nameof(segment)); }
+      if (bytes == null) { throw new ArgumentNullException(nameof(bytes)); }
+
+      Array.Copy(bytes, 0, MemoryController.Memory, segment << 4, bytes.Length);
       Cpu.SP = (ushort)stackSize;
     }
 
     public void Reboot()
     {
+      rebootCts?.Cancel();
+      rebootCts = new CancellationTokenSource();
+
       Cpu.Reset();
+      Ports.Clear();
+      ConnectInternalDevices();
     }
 
     public void Run()
@@ -53,31 +66,32 @@ namespace Masch._8086Emulator
       var opcodeCount = 0;
       while (Running)
       {
-        Cpu.Cycle();
+        Cpu.Tick();
         opcodeCount++;
         Thread.Sleep(0);
       }
       watch.Stop();
-      Console.WriteLine($"\r\nProcessed {opcodeCount} opcodes in {watch.Elapsed} ({opcodeCount / watch.Elapsed.TotalSeconds:N0} op/s)");
+      Console.WriteLine($"\r\nProcessed {opcodeCount:N0} opcodes in {watch.Elapsed} ({opcodeCount / watch.Elapsed.TotalSeconds:N0} op/s, {Cpu.ClockCount / watch.Elapsed.TotalSeconds / 1024 / 1024:F1} MHz)");
     }
 
-    private void ConnectPorts()
+    private void ConnectInternalDevices()
     {
-      //RegisterController<DMAController8237>();
-      //RegisterController<ProgrammableInterruptController8259>();
-      //RegisterController<ProgrammableInterruptTimer8253>();
-      //RegisterController<GraphicController>();
-      //RegisterController<ParallelPort>();
-      //RegisterController<FloppyDiskController>();
-      //RegisterController<SerialPort>();
+      Pic = new ProgrammableInterruptController8259();
+      Pit = new ProgrammableInterruptTimer8253(Pic);
+      //RegisterInternalDevice(new DMAController8237());
+      RegisterInternalDevice(Pic);
+      RegisterInternalDevice(Pit);
+      //RegisterInternalDevice(new GraphicController());
+      //RegisterInternalDevice(new ParallelPort());
+      //RegisterInternalDevice(new FloppyDiskController());
+      //RegisterInternalDevice(new SerialPort());
     }
 
-    private void RegisterController<T>() where T : IPort, new()
+    private void RegisterInternalDevice(IInternalDevice device)
     {
-      var controller = new T();
-      foreach (var port in controller.PortNumbers)
+      foreach (var port in device.PortNumbers)
       {
-        Ports[port] = controller;
+        Ports[port] = device;
       }
     }
   }

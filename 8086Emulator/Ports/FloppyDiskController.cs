@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Masch._8086Emulator.Ports
 {
-  public class FloppyDiskController : IPort
+  public class FloppyDiskController : IInternalDevice
   {
     public IEnumerable<int> PortNumbers => Enumerable.Range(0x3F0, 8);
 

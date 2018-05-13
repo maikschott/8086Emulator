@@ -1,31 +1,16 @@
-﻿using System;
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 
 namespace Masch._8086Emulator
 {
-  [Flags]
-  public enum CpuFlags : ushort
-  {
-    Carry = 0x1,
-    Parity = 0x4,
-    AuxiliaryCarry = 0x10,
-    Zero = 0x40,
-    Sign = 0x80,
-    Trap = 0x100,
-    InterruptEnable = 0x200,
-    Direction = 0x400,
-    Overflow = 0x800,
-    AlwaysOn = 0xF000
-  }
-
   [SuppressMessage("ReSharper", "InconsistentNaming")]
   public class CpuState
   {
-    public CpuFlags Flags { get; set; } = CpuFlags.AlwaysOn;
+    public bool CarryFlag, ParityFlag, AuxiliaryCarryFlag, ZeroFlag, SignFlag;
+    public bool TrapFlag, InterruptEnableFlag, DirectionFlag, OverflowFlag;
 
-    public bool BelowOrEqual => Flags.HasFlag(CpuFlags.Carry) | Flags.HasFlag(CpuFlags.Zero);
-    public bool Less => Flags.HasFlag(CpuFlags.Sign) ^ Flags.HasFlag(CpuFlags.Overflow);
-    public bool LessOrEqual => Less | Flags.HasFlag(CpuFlags.Zero);
+    public bool BelowOrEqual => CarryFlag | ZeroFlag;
+    public bool Less => SignFlag ^ OverflowFlag;
+    public bool LessOrEqual => Less | ZeroFlag;
 
     public ushort[] Registers = new ushort[8];
     public string[] RegisterNames = { nameof(AX), nameof(CX), nameof(DX), nameof(BX), nameof(SP), nameof(BP), nameof(SI), nameof(DI) };
@@ -107,27 +92,27 @@ namespace Masch._8086Emulator
     }
 
     /// <summary>Code segment</summary>
-    public ushort CS { get; set; }
+    public ushort CS;
 
     /// <summary>Data segment</summary>
-    public ushort DS { get; set; }
+    public ushort DS;
 
     /// <summary>Stack segment</summary>
-    public ushort SS { get; set; }
+    public ushort SS;
 
     /// <summary>Extra segment</summary>
-    public ushort ES { get; set; }
+    public ushort ES;
 
     protected byte GetRegister8(int index)
     {
-      var regValue = Registers[index & 0x3];
+      var regValue = Registers[index & 0b11];
       if ((index & 0x4) != 0) { regValue >>= 8; }
       return (byte)regValue;
     }
 
     protected void SetRegister8(int index, byte value)
     {
-      ref var regValue = ref Registers[index & 0x3];
+      ref var regValue = ref Registers[index & 0b11];
       if ((index & 0x4) == 0) // Lo
       {
         regValue = (ushort)((regValue & 0xFF00) | value);
@@ -136,6 +121,39 @@ namespace Masch._8086Emulator
       {
         regValue = (ushort)((regValue & 0x00FF) | (value << 8));
       }
+    }
+
+    protected ushort GetFlags()
+    {
+      ushort flags = 0xF000;
+      if (CarryFlag) { flags |= 0x01; }
+      if (ParityFlag) { flags |= 0x04; }
+      if (AuxiliaryCarryFlag) { flags |= 0x10; }
+      if (ZeroFlag) { flags |= 0x40; }
+      if (SignFlag) { flags |= 0x80; }
+      if (TrapFlag) { flags |= 0x100; }
+      if (InterruptEnableFlag) { flags |= 0x200; }
+      if (DirectionFlag) { flags |= 0x400; }
+      if (OverflowFlag) { flags |= 0x800; }
+      return flags;
+    }
+
+    protected void SetFlags(byte flags)
+    {
+      CarryFlag = (flags & 0x01) != 0;
+      ParityFlag = (flags & 0x04) != 0;
+      AuxiliaryCarryFlag = (flags & 0x10) != 0;
+      ZeroFlag = (flags & 0x40) != 0;
+      SignFlag = (flags & 0x80) != 0;
+    }
+
+    protected void SetFlags(ushort flags)
+    {
+      SetFlags((byte)flags);
+      TrapFlag = (flags & 0x100) != 0;
+      InterruptEnableFlag = (flags & 0x200) != 0;
+      DirectionFlag = (flags & 0x400) != 0;
+      OverflowFlag = (flags & 0x800) != 0;
     }
   }
 }
