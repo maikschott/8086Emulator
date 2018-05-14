@@ -5,12 +5,14 @@ namespace Masch._8086Emulator
 {
   public class MemoryController
   {
+    public const int MemorySize = SpecialOffset.HighMemoryArea;  // = 1MB, who would ever need more?
+
     private readonly Dictionary<int, Action<int, byte>> registeredBlocks;
     public byte[] Memory;
 
     public MemoryController()
     {
-      Memory = new byte[SpecialOffset.HighMemoryArea]; // = 1MB, who would ever need more?
+      Memory = new byte[MemorySize];
       registeredBlocks = new Dictionary<int, Action<int, byte>>();
     }
 

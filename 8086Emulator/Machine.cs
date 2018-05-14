@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using Masch._8086Emulator.Ports;
+using Masch._8086Emulator.InternalDevices;
 
 namespace Masch._8086Emulator
 {
@@ -82,10 +82,11 @@ namespace Masch._8086Emulator
       RegisterInternalDevice(new DMAController8237());
       RegisterInternalDevice(Pic);
       RegisterInternalDevice(Pit);
+      RegisterInternalDevice(new CMOSRealTimeClock());
       //RegisterInternalDevice(new GraphicController());
       //RegisterInternalDevice(new ParallelPort());
-      //RegisterInternalDevice(new FloppyDiskController());
-      //RegisterInternalDevice(new SerialPort());
+      //RegisterInternalDevice(new FloppyDiskController8272());
+      //RegisterInternalDevice(new SerialPort8250());
     }
 
     private void RegisterInternalDevice(IInternalDevice device)

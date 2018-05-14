@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Masch._8086Emulator.Ports
+namespace Masch._8086Emulator.InternalDevices
 {
   // see https://wiki.osdev.org/Programmable_Interval_Timer
   public class ProgrammableInterruptTimer8253 : IInternalDevice

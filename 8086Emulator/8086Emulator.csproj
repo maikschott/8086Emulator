@@ -47,23 +47,24 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Graphics.cs" />
+    <Compile Include="InternalDevices\CMOSRealTimeClock.cs" />
     <Compile Include="Irq.cs" />
-    <Compile Include="Ports\FloppyDiskController.cs" />
-    <Compile Include="Ports\GraphicController.cs" />
-    <Compile Include="Ports\I16BitInternalDevice.cs" />
-    <Compile Include="Ports\ParallelPort.cs" />
-    <Compile Include="Ports\ProgrammableInterruptController8259.cs" />
+    <Compile Include="InternalDevices\FloppyDiskController8272.cs" />
+    <Compile Include="InternalDevices\GraphicController.cs" />
+    <Compile Include="InternalDevices\I16BitInternalDevice.cs" />
+    <Compile Include="InternalDevices\ParallelPort.cs" />
+    <Compile Include="InternalDevices\ProgrammableInterruptController8259.cs" />
     <Compile Include="Cpu.cs" />
     <Compile Include="CpuOpcodes.cs" />
     <Compile Include="CpuState.cs" />
-    <Compile Include="Ports\DMAController8237.cs" />
+    <Compile Include="InternalDevices\DMAController8237.cs" />
     <Compile Include="InterruptVector.cs" />
     <Compile Include="Keyboard.cs" />
     <Compile Include="Machine.cs" />
-    <Compile Include="Ports\IInternalDevice.cs" />
+    <Compile Include="InternalDevices\IInternalDevice.cs" />
     <Compile Include="MemoryController.cs" />
-    <Compile Include="Ports\ProgrammableInterruptTimer8253.cs" />
-    <Compile Include="Ports\SerialPort.cs" />
+    <Compile Include="InternalDevices\ProgrammableInterruptTimer8253.cs" />
+    <Compile Include="InternalDevices\SerialPort8250.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SpecialSegment.cs" />

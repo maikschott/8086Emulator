@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Masch._8086Emulator.Ports
+namespace Masch._8086Emulator.InternalDevices
 {
   public class GraphicController : IInternalDevice
   {

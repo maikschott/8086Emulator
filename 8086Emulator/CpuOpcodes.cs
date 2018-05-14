@@ -1,5 +1,5 @@
 ﻿using System;
-using Masch._8086Emulator.Ports;
+using Masch._8086Emulator.InternalDevices;
 
 namespace Masch._8086Emulator
 {

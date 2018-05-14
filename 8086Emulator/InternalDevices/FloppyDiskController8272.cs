@@ -2,16 +2,11 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Masch._8086Emulator.Ports
+namespace Masch._8086Emulator.InternalDevices
 {
-  // see https://wiki.osdev.org/PIC
-  public class ProgrammableInterruptController8259 : IInternalDevice
+  public class FloppyDiskController8272 : IInternalDevice
   {
-    public IEnumerable<int> PortNumbers => Enumerable.Range(0x20, 2);
-
-    public void Invoke(Irq irq)
-    {
-    }
+    public IEnumerable<int> PortNumbers => Enumerable.Range(0x3F0, 8);
 
     public byte GetByte(int port)
     {

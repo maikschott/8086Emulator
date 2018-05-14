@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
-namespace Masch._8086Emulator.Ports
+namespace Masch._8086Emulator.InternalDevices
 {
   // ReSharper disable once InconsistentNaming
   [SuppressMessage("ReSharper", "UnusedMember.Local")]
@@ -30,10 +30,10 @@ namespace Masch._8086Emulator.Ports
 
       switch (port & 0x7F)
       {
-        case 0x00: // channel 0 address	byte
-        case 0x02: // channel 1 address	byte
-        case 0x04: // channel 2 address	byte
-        case 0x06: // channel 3 address	byte
+        case 0x00: // channel 0 address byte
+        case 0x02: // channel 1 address byte
+        case 0x04: // channel 2 address byte
+        case 0x06: // channel 3 address byte
         {
           var channel = channels[port >> 1];
           if (channel.Flipflop)
@@ -83,10 +83,10 @@ namespace Masch._8086Emulator.Ports
     {
       switch (port & 0x7F)
       {
-        case 0x00: // channel 0 address	byte
-        case 0x02: // channel 1 address	byte
-        case 0x04: // channel 2 address	byte
-        case 0x06: // channel 3 address	byte
+        case 0x00: // channel 0 address byte
+        case 0x02: // channel 1 address byte
+        case 0x04: // channel 2 address byte
+        case 0x06: // channel 3 address byte
         {
           var channel = channels[port >> 1];
           if (channel.Flipflop)

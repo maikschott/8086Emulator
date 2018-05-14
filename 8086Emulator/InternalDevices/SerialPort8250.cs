@@ -1,9 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 
-namespace Masch._8086Emulator.Ports
+namespace Masch._8086Emulator.InternalDevices
 {
-  public class SerialPort : IInternalDevice
+  public class SerialPort8250 : IInternalDevice
   {
     public IEnumerable<int> PortNumbers => Enumerable.Range(0x3F8, 8);
 
