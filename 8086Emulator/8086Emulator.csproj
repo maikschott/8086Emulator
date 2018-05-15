@@ -48,6 +48,7 @@
   <ItemGroup>
     <Compile Include="Graphics.cs" />
     <Compile Include="InternalDevices\CMOSRealTimeClock.cs" />
+    <Compile Include="InternalDevices\KeyboardController8042.cs" />
     <Compile Include="Irq.cs" />
     <Compile Include="InternalDevices\FloppyDiskController8272.cs" />
     <Compile Include="InternalDevices\GraphicController.cs" />
@@ -59,7 +60,6 @@
     <Compile Include="CpuState.cs" />
     <Compile Include="InternalDevices\DMAController8237.cs" />
     <Compile Include="InterruptVector.cs" />
-    <Compile Include="Keyboard.cs" />
     <Compile Include="Machine.cs" />
     <Compile Include="InternalDevices\IInternalDevice.cs" />
     <Compile Include="MemoryController.cs" />

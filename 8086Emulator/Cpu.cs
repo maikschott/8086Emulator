@@ -8,8 +8,8 @@ namespace Masch._8086Emulator
 {
   public partial class Cpu : CpuState
   {
-    public const int Frequency = ProgrammableInterruptTimer8253.Frequency * 4; // 4.77 MHz
-    public const int CpuTicksPerTimerTicks = Frequency / ProgrammableInterruptTimer8253.Frequency;
+    public const int TimerTickMultiplier = 4;
+    public const int Frequency = ProgrammableInterruptTimer8253.Frequency * TimerTickMultiplier; // 4.77 MHz
 
     private readonly Machine machine;
     private readonly MemoryController memory;
@@ -18,10 +18,10 @@ namespace Masch._8086Emulator
     private int clockCount;
     private int cpuTickOfLastPitTick;
     private int? currentEffectiveAddress;
-    private SegmentRegister dataSegmentRegister;
-    private bool dataSegmentRegisterChanged;
-    private int loopingCount;
+    private SegmentRegister? dataSegmentRegister;
     private string debugParam;
+    private bool firstRepetition;
+    private bool isLooping;
     private byte opcodeIndex;
     private Action[] operations;
     private Repeat repeat;
@@ -61,6 +61,31 @@ namespace Masch._8086Emulator
 
     private bool IsRegisterSource => ((opcodes[0] >> 1) & 0x1) == 0;
 
+    public void InvokeExternalInterrupt(byte vector)
+    {
+      if (!InterruptEnableFlag) { return; }
+
+      var oldDataSegmentRegister = dataSegmentRegister;
+      dataSegmentRegister = null;
+
+      var oldRepeat = repeat;
+      repeat = Repeat.No;
+
+      var oldIsLooping = isLooping;
+      isLooping = false;
+
+      var oldTrapFlag = TrapFlag;
+      InterruptEnableFlag = TrapFlag = false;
+
+      Int((InterruptVector)vector);
+
+      dataSegmentRegister = oldDataSegmentRegister;
+      repeat = oldRepeat;
+      isLooping = oldIsLooping;
+      InterruptEnableFlag = true;
+      TrapFlag = oldTrapFlag;
+    }
+
     public void Reset()
     {
       CarryFlag = ParityFlag = AuxiliaryCarryFlag = ZeroFlag = SignFlag = TrapFlag = InterruptEnableFlag = DirectionFlag = OverflowFlag = false;
@@ -68,20 +93,20 @@ namespace Masch._8086Emulator
       IP = 0x0000;
       DS = SS = ES = 0x0000;
       Array.Clear(Registers, 0, Registers.Length);
-      dataSegmentRegister = SegmentRegister.DS;
-      dataSegmentRegisterChanged = false;
+      dataSegmentRegister = null;
       repeat = Repeat.No;
       clockCount = 0;
       cpuTickOfLastPitTick = 0;
-      loopingCount = 0;
+      isLooping = false;
+      firstRepetition = false;
     }
 
     public void Tick()
     {
-      var remainingPitTicks = (clockCount - cpuTickOfLastPitTick) / CpuTicksPerTimerTicks;
+      var remainingPitTicks = (clockCount - cpuTickOfLastPitTick) / TimerTickMultiplier;
       if (remainingPitTicks > 0)
       {
-        for (int i = cpuTickOfLastPitTick; i < clockCount; i += CpuTicksPerTimerTicks)
+        for (var i = cpuTickOfLastPitTick; i < clockCount; i += TimerTickMultiplier)
         {
           machine.Pit.Tick();
           cpuTickOfLastPitTick = i;
@@ -96,10 +121,15 @@ namespace Masch._8086Emulator
       var opcode = ReadCodeByte();
       operations[opcode]();
 
-      if (!dataSegmentRegisterChanged) { dataSegmentRegister = SegmentRegister.DS; }
-      else { dataSegmentRegisterChanged = false; }
+      dataSegmentRegister = null;
 
       Debug(" " + debugParam + Environment.NewLine);
+
+      foreach (var irq in machine.Pic.GetPrioritizedIrqs())
+      {
+        InvokeExternalInterrupt(irq);
+      }
+      machine.Pic.EndOfInterrupts();
     }
 
     protected void RegisterOperations()
@@ -308,16 +338,16 @@ namespace Masch._8086Emulator
         },
         () => RepeatCX(Movs), // 0xA4
         () => RepeatCX(Movs), // 0xA5
-        Cmps, // 0xA6
-        Cmps, // 0xA7
+        () => RepeatCX(Cmps), // 0xA6
+        () => RepeatCX(Cmps), // 0xA7
         () => Test(AL, ReadCodeByte()), // 0xA8
         () => Test(AX, ReadCodeWord()), // 0xA9
-        Stos, // 0xAA
-        Stos, // 0xAB
-        Lods, // 0xAC
-        Lods, // 0xAD
-        Scas, // 0xAE
-        Scas, // 0xAF
+        () => RepeatCX(Stos), // 0xAA
+        () => RepeatCX(Stos), // 0xAB
+        () => RepeatCX(Lods), // 0xAC
+        () => RepeatCX(Lods), // 0xAD
+        () => RepeatCX(Scas), // 0xAE
+        () => RepeatCX(Scas), // 0xAF
         MoveRegisterImmediate08, // 0xB0
         MoveRegisterImmediate08, // 0xB1
         MoveRegisterImmediate08, // 0xB2
@@ -465,6 +495,7 @@ namespace Masch._8086Emulator
         {
           Debug("REPNE");
           repeat = Repeat.Negative;
+          firstRepetition = true;
 
           clockCount += 2 + 9; // 2 per se, +9 when used with an opcode supporting repeat
         },
@@ -472,6 +503,7 @@ namespace Masch._8086Emulator
         {
           Debug("REP");
           repeat = Repeat.Positive;
+          firstRepetition = true;
 
           clockCount += 2 + 9; // 2 per se, +9 when used with an opcode supporting repeat
         },
@@ -544,11 +576,10 @@ namespace Masch._8086Emulator
       return parity;
     }
 
-
     [Conditional("DEBUG")]
     private void Debug(string text)
     {
-      if (loopingCount > 10)
+      if (isLooping || repeat != Repeat.No && !firstRepetition)
       {
         debugParam = null;
         return;
@@ -691,13 +722,19 @@ namespace Masch._8086Emulator
       var relOpcode = opcodes[0] & 0b111;
       if (relOpcode == 4) // XXX AL, IMM8
       {
-        AL = func8(AL, ReadCodeByte()) ?? AL;
+        var value = ReadCodeByte();
+        DebugSourceThenTarget($"AL,{value:X2}");
+
+        AL = func8(AL, value) ?? AL;
         clockCount += 4;
         return;
       }
       if (relOpcode == 5) // XXX AX, IMM16
       {
-        AX = func16(AX, ReadCodeWord()) ?? AX;
+        var value = ReadCodeWord();
+        DebugSourceThenTarget($"AX,{value:X4}");
+
+        AX = func16(AX, value) ?? AX;
         clockCount += 4;
         return;
       }

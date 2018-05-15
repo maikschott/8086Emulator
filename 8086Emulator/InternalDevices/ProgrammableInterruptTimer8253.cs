@@ -9,8 +9,10 @@ namespace Masch._8086Emulator.InternalDevices
   {
     public const int Frequency = 1_193_182; // Hz
     private const int Irq0Timer = 0;
+
     // ReSharper disable once InconsistentNaming
     private const int DRAMRefreshTimer = 1;
+
     private const int PcSpeakerTimer = 2;
     private const int TimerCount = PcSpeakerTimer + 1;
 
@@ -26,9 +28,62 @@ namespace Masch._8086Emulator.InternalDevices
       timers[PcSpeakerTimer] = new Timer();
     }
 
-    public IEnumerable<int> PortNumbers => Enumerable.Range(0x40, 4);
+    IEnumerable<int> IInternalDevice.PortNumbers => Enumerable.Range(0x40, 4);
 
-    public byte GetByte(int port)
+    public int SpeakerFrequency
+    {
+      get
+      {
+        var timer = timers[PcSpeakerTimer];
+        return timer.IsActive && timer.InitialValue > 0 ? Frequency / timer.InitialValue : 0;
+      }
+    }
+
+    public void Tick()
+    {
+      for (var i = 0; i < TimerCount; i++)
+      {
+        var timer = timers[i];
+        if (timer.IsActive)
+        {
+          switch (timer.Mode)
+          {
+            case Mode.InterruptOnTerminalCount:
+              if (--timers[i].Counter == 0 && i == Irq0Timer)
+              {
+                pic.Invoke(Irq.Timer);
+              }
+              break;
+            case Mode.OneShot:
+              if (i == PcSpeakerTimer)
+              {
+                // TODO implement
+              }
+              break;
+            case Mode.RateGenerator:
+            case Mode.RateGenerator2:
+              if (--timer.Counter == 1) { timer.Counter = timer.InitialValue; }
+              break;
+            case Mode.SquareWaveGenerator:
+            case Mode.SquareWaveGenerator2:
+              timer.Counter -= 2;
+              if (timer.Counter <= 0) { timer.Counter = timer.InitialValue; }
+              break;
+            case Mode.SoftwareTriggeredStrobe:
+              // TODO implement
+              break;
+            case Mode.HardwareTriggeredStrobe:
+              if (i == PcSpeakerTimer)
+              {
+                // TODO implement
+              }
+              break;
+          }
+        }
+      }
+    }
+
+    byte IInternalDevice.GetByte(int port)
     {
       byte result = 0;
 
@@ -50,21 +105,19 @@ namespace Masch._8086Emulator.InternalDevices
       return result;
     }
 
-    public void SetByte(int port, byte value)
+    void IInternalDevice.SetByte(int port, byte value)
     {
       if (port >= 0x40 && port <= 0x42)
       {
         var timer = timers[port & 0b11];
 
-        var curValue = timer.Latch ?? timer.InitialValue;
-
         if (timer.WordPart == WordPart.Lo)
         {
-          timer.InitialValue = (ushort)((timer.InitialValue & 0xFF00) | curValue);
+          timer.InitialValue = (ushort)((timer.InitialValue & 0xFF00) | value);
         }
         else
         {
-          timer.InitialValue = (ushort)((curValue << 8) | (timer.InitialValue & 0x00FF));
+          timer.InitialValue = (ushort)((value << 8) | (timer.InitialValue & 0x00FF));
         }
         if (timer.Type == AccessType.LoHiValue)
         {
@@ -101,59 +154,15 @@ namespace Masch._8086Emulator.InternalDevices
       }
     }
 
-    public void Tick()
-    {
-      for (var i = 0; i < TimerCount; i++)
-      {
-        var timer = timers[i];
-        if (timer.IsActive)
-        {
-          switch (timer.Mode)
-          {
-            case Mode.InterruptOnTerminalCount:
-              if (--timers[i].Counter == 0 && i == Irq0Timer)
-              {
-                pic.Invoke(Irq.Timer);
-              }
-              break;
-            case Mode.OneShot:
-              if (i == PcSpeakerTimer)
-              {
-                // TODO implement
-              }
-              break;
-            case Mode.RateGenerator:
-            case Mode.RateGenerator2:
-              if (--timer.Counter == 1) { timer.Counter = timer.InitialValue; }
-              break;
-            case Mode.SquareWaveGenerator:
-            case Mode.SquareWaveGenerator2:
-              timer.Counter -= 2;
-              if (timer.Counter == 0) { timer.Counter = timer.InitialValue; }
-              break;
-            case Mode.SoftwareTriggeredStrobe:
-              // TODO implement
-              break;
-            case Mode.HardwareTriggeredStrobe:
-              if (i == PcSpeakerTimer)
-              {
-                // TODO implement
-              }
-              break;
-          }
-        }
-      }
-    }
-
     private class Timer
     {
-      public WordPart WordPart;
       public ushort Counter;
       public ushort InitialValue;
       public bool IsActive;
       public ushort? Latch;
       public Mode Mode;
       public AccessType Type;
+      public WordPart WordPart;
 
       // ReSharper disable once UnusedMember.Local
       public TimeSpan Duration
@@ -187,8 +196,10 @@ namespace Masch._8086Emulator.InternalDevices
     private enum AccessType
     {
       Latch,
+
       // ReSharper disable once UnusedMember.Local
       LoValue,
+
       // ReSharper disable once UnusedMember.Local
       HiValue,
       LoHiValue

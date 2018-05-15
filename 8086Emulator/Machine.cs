@@ -54,7 +54,7 @@ namespace Masch._8086Emulator
     {
       rebootCts?.Cancel();
       rebootCts = new CancellationTokenSource();
-
+      
       Cpu.Reset();
       Ports.Clear();
       ConnectInternalDevices();
@@ -82,6 +82,7 @@ namespace Masch._8086Emulator
       RegisterInternalDevice(new DMAController8237());
       RegisterInternalDevice(Pic);
       RegisterInternalDevice(Pit);
+      //RegisterInternalDevice(new KeyboardController8042(Pic));
       RegisterInternalDevice(new CMOSRealTimeClock());
       //RegisterInternalDevice(new GraphicController());
       //RegisterInternalDevice(new ParallelPort());
