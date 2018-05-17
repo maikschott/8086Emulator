@@ -10,12 +10,9 @@ namespace Masch._8086Emulator.InternalDevices
     public const int Frequency = 1_193_182; // Hz
     private const int Irq0Timer = 0;
 
-    // ReSharper disable once InconsistentNaming
-    private const int DRAMRefreshTimer = 1;
-
+    private const int DramRefreshTimer = 1;
     private const int PcSpeakerTimer = 2;
     private const int TimerCount = PcSpeakerTimer + 1;
-
     private readonly ProgrammableInterruptController8259 pic;
     private readonly Timer[] timers;
 
@@ -24,11 +21,9 @@ namespace Masch._8086Emulator.InternalDevices
       this.pic = pic;
       timers = new Timer[TimerCount];
       timers[Irq0Timer] = new Timer();
-      timers[DRAMRefreshTimer] = new Timer();
+      timers[DramRefreshTimer] = new Timer();
       timers[PcSpeakerTimer] = new Timer();
     }
-
-    IEnumerable<int> IInternalDevice.PortNumbers => Enumerable.Range(0x40, 4);
 
     public int SpeakerFrequency
     {
@@ -38,6 +33,8 @@ namespace Masch._8086Emulator.InternalDevices
         return timer.IsActive && timer.InitialValue > 0 ? Frequency / timer.InitialValue : 0;
       }
     }
+
+    IEnumerable<int> IInternalDevice.PortNumbers => Enumerable.Range(0x40, 4);
 
     public void Tick()
     {

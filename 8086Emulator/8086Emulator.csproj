@@ -46,9 +46,8 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Graphics.cs" />
     <Compile Include="InternalDevices\CMOSRealTimeClock.cs" />
-    <Compile Include="InternalDevices\KeyboardController8042.cs" />
+    <Compile Include="InternalDevices\ProgrammablePeripheralInterface8255.cs" />
     <Compile Include="Irq.cs" />
     <Compile Include="InternalDevices\FloppyDiskController8272.cs" />
     <Compile Include="InternalDevices\GraphicController.cs" />

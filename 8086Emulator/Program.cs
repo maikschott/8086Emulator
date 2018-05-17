@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using Masch._8086Emulator.InternalDevices;
 
 namespace Masch._8086Emulator
 {
@@ -17,6 +18,7 @@ namespace Masch._8086Emulator
 
       byte[] bios = null;
       byte[] program = null;
+      int programAddr = 0;
       foreach (var parameter in parameters)
       {
         switch (parameter.Key)
@@ -28,26 +30,38 @@ namespace Masch._8086Emulator
             Debug.Listeners.Add(new ConsoleTraceListener(true));
             break;
           case "program":
-            program = File.ReadAllBytes(parameter.Value);
+          {
+            var parts = parameter.Value.Split('@');
+            program = File.ReadAllBytes(parts[0]);
+            if (parts.Length == 2)
+            {
+              int.TryParse(parts[1], NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out programAddr);
+            }
             break;
+          }
           case "textseg":
             if (int.TryParse(parameter.Value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var textSeg))
             {
-              Graphics.TextStartOfs = textSeg;
+              GraphicController.TextStartOfs = textSeg;
             }
             break;
         }
       }
-      
+
       var machine = new Machine();
 
       if (bios != null)
       {
         machine.LoadProgram((SpecialOffset.HighMemoryArea - bios.Length) >> 4, bios);
+        if (program != null && programAddr > 0)
+        {
+          machine.LoadProgram(programAddr, program);
+        }
       }
-      if (program != null)
+      else if (program != null)
       {
         machine.LoadAndSetBootstrapper(0, program);
+        machine.Cpu.SP = 0x100;
       }
 
       machine.Run();

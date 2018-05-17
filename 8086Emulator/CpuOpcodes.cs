@@ -38,7 +38,7 @@ namespace Masch._8086Emulator
       var value = ReadCodeByte();
       if (value == 0)
       {
-        Int(InterruptVector.DivideByZero);
+        DoInt(InterruptVector.DivideByZero);
       }
       else
       {
@@ -88,7 +88,7 @@ namespace Masch._8086Emulator
       CarryFlag = (temp & 0xFF00) != 0;
       OverflowFlag = ((temp ^ x) & (temp ^ y) & 0x80) != 0;
       AuxiliaryCarryFlag = ((x ^ y ^ temp) & 0x10) != 0;
-      SetFlagsFromValue(Width.Byte, temp);
+      SetFlagsFromValue(Width.Byte, result);
       return result;
     }
 
@@ -120,6 +120,7 @@ namespace Masch._8086Emulator
     private void ChangeSegmentPrefix()
     {
       dataSegmentRegister = (SegmentRegister)((opcodes[0] >> 3) & 0b11);
+      dataSegmentRegisterChanged = true;
       Debug($"{dataSegmentRegister}:");
     }
 
@@ -254,6 +255,17 @@ namespace Masch._8086Emulator
       CS = segment;
     }
 
+    private void DoInt(InterruptVector interruptVector, Action flagAction = null)
+    {
+      Push(GetFlags());
+      flagAction?.Invoke();
+      var tableOfs = (byte)interruptVector * 4;
+      DoCall(memory.ReadWord(tableOfs), memory.ReadWord(tableOfs + 2));
+
+      clockCount += 51;
+      if (opcodes[0] == 0xCC) { clockCount++; }
+    }
+
     private void DoJmp(ushort offset, ushort segment)
     {
       CS = segment;
@@ -296,22 +308,12 @@ namespace Masch._8086Emulator
       clockCount += 2;
     }
 
-    private void Int(InterruptVector interruptVector)
-    {
-      Push(GetFlags());
-      var tableOfs = (byte)interruptVector * 4;
-      DoCall(memory.ReadWord(tableOfs), memory.ReadWord(tableOfs + 2));
-
-      clockCount += 51;
-      if (opcodes[0] == 0xCC) { clockCount++; }
-    }
-
     private void Into()
     {
       Debug("INTO");
       if (OverflowFlag)
       {
-        Int(InterruptVector.Overflow);
+        DoInt(InterruptVector.Overflow);
 
         clockCount += 2; // +51 of INT 
       }
@@ -551,7 +553,7 @@ namespace Masch._8086Emulator
       var width = OpWidth;
       Debug($"MOVS{(width == Width.Byte ? "B" : "W")} (CX={CX:X4})");
       var srcAddr = (DataSegment << 4) + SI;
-      var dstAddr = (DataSegment << 4) + DI;
+      var dstAddr = (ES << 4) + DI;
 
       if (width == Width.Byte)
       {
@@ -683,7 +685,6 @@ namespace Masch._8086Emulator
 
       var singleBitOpcode = (opcodes[0] & 0x2) == 0;
       var bitCount = singleBitOpcode ? (byte)1 : CL;
-      var effectiveBitCount = bitCount % 8;
       var dst = ReadFromRegisterOrMemory(width, mod, rm);
       var msb = width == Width.Byte ? (ushort)0x80 : (ushort)0x8000;
       var tmpcf = CarryFlag;
@@ -692,9 +693,9 @@ namespace Masch._8086Emulator
       {
         case 0:
           Debug("ROL");
-          if (effectiveBitCount == 0) { break; }
+          if (bitCount == 0) { break; }
 
-          for (var bit = 0; bit < effectiveBitCount; bit++)
+          for (var bit = 0; bit < bitCount; bit++)
           {
             tmpcf = (dst & msb) != 0;
             dst <<= 1;
@@ -705,9 +706,9 @@ namespace Masch._8086Emulator
           break;
         case 1:
           Debug("ROR");
-          if (effectiveBitCount == 0) { break; }
+          if (bitCount == 0) { break; }
 
-          for (var bit = 0; bit < effectiveBitCount; bit++)
+          for (var bit = 0; bit < bitCount; bit++)
           {
             tmpcf = (dst & 1) != 0;
             dst >>= 1;
@@ -718,9 +719,9 @@ namespace Masch._8086Emulator
           break;
         case 2:
           Debug("RCL");
-          if (effectiveBitCount == 0) { break; }
+          if (bitCount == 0) { break; }
 
-          for (var bit = 0; bit < effectiveBitCount; bit++)
+          for (var bit = 0; bit < bitCount; bit++)
           {
             tmpcf = CarryFlag;
             CarryFlag = (dst & msb) != 0;
@@ -731,9 +732,9 @@ namespace Masch._8086Emulator
           break;
         case 3:
           Debug("RCR");
-          if (effectiveBitCount == 0) { break; }
+          if (bitCount == 0) { break; }
 
-          for (var bit = 0; bit < effectiveBitCount; bit++)
+          for (var bit = 0; bit < bitCount; bit++)
           {
             tmpcf = CarryFlag;
             CarryFlag = (dst & 1) != 0;
@@ -744,9 +745,9 @@ namespace Masch._8086Emulator
           break;
         case 4:
           Debug("SHL");
-          if (effectiveBitCount == 0) { break; }
+          if (bitCount == 0) { break; }
 
-          for (var bit = 0; bit < effectiveBitCount; bit++)
+          for (var bit = 0; bit < bitCount; bit++)
           {
             tmpcf = (dst & msb) != 0;
             dst <<= 1;
@@ -757,9 +758,9 @@ namespace Masch._8086Emulator
           break;
         case 5:
           Debug("SHR");
-          if (effectiveBitCount == 0) { break; }
+          if (bitCount == 0) { break; }
 
-          for (var bit = 0; bit < effectiveBitCount; bit++)
+          for (var bit = 0; bit < bitCount; bit++)
           {
             tmpcf = (dst & 1) != 0;
             dst >>= 1;
@@ -770,9 +771,9 @@ namespace Masch._8086Emulator
           break;
         case 7:
           Debug("SAR");
-          if (effectiveBitCount == 0) { break; }
+          if (bitCount == 0) { break; }
 
-          for (var bit = 0; bit < effectiveBitCount; bit++)
+          for (var bit = 0; bit < bitCount; bit++)
           {
             tmpcf = (dst & 1) != 0;
             var sign = (ushort)(dst & msb);
@@ -789,6 +790,7 @@ namespace Masch._8086Emulator
 
       if (singleBitOpcode)
       {
+        DebugSourceThenTarget(nameof(CL));
         clockCount += mod == 0b11 ? 2 : 15;
       }
       else
@@ -883,7 +885,7 @@ namespace Masch._8086Emulator
           Debug("DIV");
           if (src == 0)
           {
-            Int(InterruptVector.DivideByZero);
+            DoInt(InterruptVector.DivideByZero);
             return;
           }
 
@@ -891,7 +893,7 @@ namespace Masch._8086Emulator
           {
             dst = AX;
             var result = (ushort)(dst / src);
-            if (result > byte.MaxValue) { Int(InterruptVector.DivideByZero); }
+            if (result > byte.MaxValue) { DoInt(InterruptVector.DivideByZero); }
             else
             {
               AL = (byte)result;
@@ -904,7 +906,7 @@ namespace Masch._8086Emulator
           {
             var longdst = (uint)((DX << 16) | AX);
             var result = longdst / src;
-            if (result > ushort.MaxValue) { Int(InterruptVector.DivideByZero); }
+            if (result > ushort.MaxValue) { DoInt(InterruptVector.DivideByZero); }
             else
             {
               AX = (ushort)result;
@@ -918,7 +920,7 @@ namespace Masch._8086Emulator
           Debug("IDIV");
           if (src == 0)
           {
-            Int(InterruptVector.DivideByZero);
+            DoInt(InterruptVector.DivideByZero);
             return;
           }
 
@@ -927,7 +929,7 @@ namespace Masch._8086Emulator
             var ssrc = (sbyte)src;
             var sdst = (short)AX;
             var result = sdst / ssrc;
-            if (result > sbyte.MaxValue || result < sbyte.MinValue) { Int(InterruptVector.DivideByZero); }
+            if (result > sbyte.MaxValue || result < sbyte.MinValue) { DoInt(InterruptVector.DivideByZero); }
             else
             {
               AL = (byte)result;
@@ -941,7 +943,7 @@ namespace Masch._8086Emulator
             var ssrc = (short)src;
             var sdst = (DX << 16) | AX;
             var result = sdst / ssrc;
-            if (result > short.MaxValue || result < short.MinValue) { Int(InterruptVector.DivideByZero); }
+            if (result > short.MaxValue || result < short.MinValue) { DoInt(InterruptVector.DivideByZero); }
             else
             {
               AX = (ushort)result;
@@ -1291,7 +1293,7 @@ namespace Masch._8086Emulator
     {
       var width = OpWidth;
       Debug($"STOS{(width == Width.Byte ? "B" : "W")} (CX={CX:X4})");
-      WriteToMemory(width, (DataSegment << 4) + DI, GetRegisterValue(width, 0 /* AL or AX */));
+      WriteToMemory(width, (ES << 4) + DI, GetRegisterValue(width, 0 /* AL or AX */));
 
       DI += GetSourceOrDestDelta(width);
 
@@ -1311,7 +1313,7 @@ namespace Masch._8086Emulator
       CarryFlag = (temp & 0xFF00) != 0;
       OverflowFlag = ((temp ^ x) & (temp ^ y) & 0x80) != 0;
       AuxiliaryCarryFlag = ((x ^ y ^ temp) & 0x10) != 0;
-      SetFlagsFromValue(Width.Byte, temp);
+      SetFlagsFromValue(Width.Byte, result);
       return result;
     }
 

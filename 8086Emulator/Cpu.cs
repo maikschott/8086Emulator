@@ -19,6 +19,7 @@ namespace Masch._8086Emulator
     private int cpuTickOfLastPitTick;
     private int? currentEffectiveAddress;
     private SegmentRegister? dataSegmentRegister;
+    private bool dataSegmentRegisterChanged;
     private string debugParam;
     private bool firstRepetition;
     private bool isLooping;
@@ -61,31 +62,6 @@ namespace Masch._8086Emulator
 
     private bool IsRegisterSource => ((opcodes[0] >> 1) & 0x1) == 0;
 
-    public void InvokeExternalInterrupt(byte vector)
-    {
-      if (!InterruptEnableFlag) { return; }
-
-      var oldDataSegmentRegister = dataSegmentRegister;
-      dataSegmentRegister = null;
-
-      var oldRepeat = repeat;
-      repeat = Repeat.No;
-
-      var oldIsLooping = isLooping;
-      isLooping = false;
-
-      var oldTrapFlag = TrapFlag;
-      InterruptEnableFlag = TrapFlag = false;
-
-      Int((InterruptVector)vector);
-
-      dataSegmentRegister = oldDataSegmentRegister;
-      repeat = oldRepeat;
-      isLooping = oldIsLooping;
-      InterruptEnableFlag = true;
-      TrapFlag = oldTrapFlag;
-    }
-
     public void Reset()
     {
       CarryFlag = ParityFlag = AuxiliaryCarryFlag = ZeroFlag = SignFlag = TrapFlag = InterruptEnableFlag = DirectionFlag = OverflowFlag = false;
@@ -94,6 +70,7 @@ namespace Masch._8086Emulator
       DS = SS = ES = 0x0000;
       Array.Clear(Registers, 0, Registers.Length);
       dataSegmentRegister = null;
+      dataSegmentRegisterChanged = false;
       repeat = Repeat.No;
       clockCount = 0;
       cpuTickOfLastPitTick = 0;
@@ -113,23 +90,22 @@ namespace Masch._8086Emulator
         }
       }
 
-      Debug($"[{CS:X4}:{IP:X4}] ");
+      debugParam = null;
+      Debug($"[{CS:X4}:{IP:X4}] AX={AX:X4}, BX={BX:X4}, CX={CX:X4}, DX={DX:X4}, SI={SI:X4}, DI={DI:X4}, SP={SP:X4}  ");
+
+      //if (IP == 0xF09C) System.Diagnostics.Debugger.Break();
 
       currentEffectiveAddress = null;
       Array.Copy(memory.Memory, (CS << 4) + IP, opcodes, 0, 6);
       opcodeIndex = 0;
       var opcode = ReadCodeByte();
       operations[opcode]();
-
-      dataSegmentRegister = null;
+      if (dataSegmentRegisterChanged) { dataSegmentRegisterChanged = false; }
+      else { dataSegmentRegister = null; }
 
       Debug(" " + debugParam + Environment.NewLine);
 
-      foreach (var irq in machine.Pic.GetPrioritizedIrqs())
-      {
-        InvokeExternalInterrupt(irq);
-      }
-      machine.Pic.EndOfInterrupts();
+      ProcessIrqs();
     }
 
     protected void RegisterOperations()
@@ -379,12 +355,12 @@ namespace Masch._8086Emulator
         () => // 0xCC
         {
           Debug("INT 3");
-          Int(InterruptVector.Breakpoint);
+          DoInt(InterruptVector.Breakpoint);
         },
         () => // 0xCD
         {
           Debug("INT");
-          Int((InterruptVector)ReadCodeByte());
+          DoInt((InterruptVector)ReadCodeByte());
         },
         Into, // 0xCE
         Iret, // 0xCF
@@ -589,7 +565,6 @@ namespace Masch._8086Emulator
       {
         System.Diagnostics.Debug.Write(text);
       }
-      debugParam = null;
     }
 
     [Conditional("DEBUG")]
@@ -771,6 +746,44 @@ namespace Masch._8086Emulator
       }
     }
 
+    private void ProcessIrqs()
+    {
+      if (!InterruptEnableFlag) { return; }
+
+      var stateWasChanged = false;
+      SegmentRegister? oldDataSegmentRegister = null;
+      var oldRepeat = Repeat.No;
+      var oldIsLooping = false;
+
+      foreach (var irq in machine.Pic.GetPrioritizedIrqs())
+      {
+        if (!stateWasChanged)
+        {
+          oldDataSegmentRegister = dataSegmentRegister;
+          dataSegmentRegister = null;
+
+          oldRepeat = repeat;
+          repeat = Repeat.No;
+
+          oldIsLooping = isLooping;
+          isLooping = false;
+
+          stateWasChanged = true;
+        }
+
+        DoInt(irq, () => InterruptEnableFlag = TrapFlag = false);
+      }
+
+      if (stateWasChanged)
+      {
+        machine.Pic.EndOfInterrupts();
+
+        dataSegmentRegister = oldDataSegmentRegister;
+        repeat = oldRepeat;
+        isLooping = oldIsLooping;
+      }
+    }
+
     private byte ReadCodeByte()
     {
       IP++;
@@ -866,14 +879,14 @@ namespace Masch._8086Emulator
     private void UnknownOpcode()
     {
       Debug($"Opcode {opcodes[0]:X2} not supported");
-      Int(InterruptVector.InvalidOpcode);
+      DoInt(InterruptVector.InvalidOpcode);
     }
 
     private void UnknownOpcode(byte mod, byte reg, byte rm)
     {
       var modRegRm = (mod << 6) | (reg << 3) | rm;
       Debug($"Opcode {opcodes[0]:X2}{modRegRm:X2} not supported");
-      Int(InterruptVector.InvalidOpcode);
+      DoInt(InterruptVector.InvalidOpcode);
     }
 
 

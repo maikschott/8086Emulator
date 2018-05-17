@@ -15,7 +15,7 @@ namespace Masch._8086Emulator.InternalDevices
     private byte vectorOffset = 8;
     private readonly byte[] priorities = { 0, 1, 8, 9, 10, 11, 12, 13, 14, 15, 3, 4, 5, 6, 7 };
 
-    IEnumerable<int> IInternalDevice.PortNumbers => Enumerable.Range(0x20, 2).Concat(Enumerable.Range(0xA0, 2));
+    IEnumerable<int> IInternalDevice.PortNumbers => Enumerable.Range(0x20, 2)/*.Concat(Enumerable.Range(0xA0, 2))*/;
 
     public void Invoke(Irq irq)
     {
@@ -26,7 +26,7 @@ namespace Masch._8086Emulator.InternalDevices
       }
     }
 
-    public IEnumerable<byte> GetPrioritizedIrqs()
+    public IEnumerable<InterruptVector> GetPrioritizedIrqs()
     {
       foreach (var irq in priorities)
       {
@@ -35,7 +35,7 @@ namespace Masch._8086Emulator.InternalDevices
         {
           requestRegister &= (byte)~irqMask;
           inServiceRegister |= irqMask;
-          yield return (byte)(vectorOffset + irq);
+          yield return (InterruptVector)(vectorOffset + irq);
         }
       }
     }

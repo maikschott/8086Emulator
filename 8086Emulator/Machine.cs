@@ -14,7 +14,6 @@ namespace Masch._8086Emulator
     {
       MemoryController = new MemoryController();
       Cpu = new Cpu(this);
-      Graphics = new Graphics(MemoryController);
       Ports = new Dictionary<int, IInternalDevice>();
 
       Reboot();
@@ -22,7 +21,7 @@ namespace Masch._8086Emulator
 
     public Cpu Cpu { get; }
     public MemoryController MemoryController { get; }
-    public Graphics Graphics { get; }
+    public GraphicController Graphics { get; private set; }
     public ProgrammableInterruptController8259 Pic { get; private set; }
     public ProgrammableInterruptTimer8253 Pit { get; private set; }
 
@@ -41,13 +40,12 @@ namespace Masch._8086Emulator
       MemoryController.WriteWord(ofs, (ushort)segment); // segment
     }
 
-    public void LoadProgram(int segment, byte[] bytes, int stackSize = 0x100)
+    public void LoadProgram(int segment, byte[] bytes)
     {
       if (segment < 0 || segment > ushort.MaxValue) { throw new ArgumentOutOfRangeException(nameof(segment)); }
       if (bytes == null) { throw new ArgumentNullException(nameof(bytes)); }
 
       Array.Copy(bytes, 0, MemoryController.Memory, segment << 4, bytes.Length);
-      Cpu.SP = (ushort)stackSize;
     }
 
     public void Reboot()
@@ -79,12 +77,13 @@ namespace Masch._8086Emulator
     {
       Pic = new ProgrammableInterruptController8259();
       Pit = new ProgrammableInterruptTimer8253(Pic);
+      Graphics = new GraphicController(MemoryController);
       RegisterInternalDevice(new DMAController8237());
       RegisterInternalDevice(Pic);
       RegisterInternalDevice(Pit);
-      //RegisterInternalDevice(new KeyboardController8042(Pic));
+      RegisterInternalDevice(new ProgrammablePeripheralInterface8255());
       RegisterInternalDevice(new CMOSRealTimeClock());
-      //RegisterInternalDevice(new GraphicController());
+      RegisterInternalDevice(Graphics);
       //RegisterInternalDevice(new ParallelPort());
       //RegisterInternalDevice(new FloppyDiskController8272());
       //RegisterInternalDevice(new SerialPort8250());
