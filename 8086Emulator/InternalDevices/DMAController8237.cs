@@ -118,7 +118,13 @@ namespace Masch._8086Emulator.InternalDevices
           break;
         }
         case 0x08: // channel 0-3 command register
-          //commandRegister = (CommandRegister)value;
+          //if ((value & 0x04) != 0) // disable DMA controller
+          //{
+          //  foreach (var channel in channels)
+          //  {
+          //    channel.Masked = true;
+          //  }
+          //}
           break;
         case 0x09: // write request register
           //requestRegister = value;

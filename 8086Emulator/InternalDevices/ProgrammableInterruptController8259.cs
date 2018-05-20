@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Masch._8086Emulator.InternalDevices
@@ -6,48 +7,45 @@ namespace Masch._8086Emulator.InternalDevices
   // see https://wiki.osdev.org/PIC
   public class ProgrammableInterruptController8259 : IInternalDevice
   {
+    private readonly byte[] priorities = { 0, 1, 8, 9, 10, 11, 12, 13, 14, 15, 3, 4, 5, 6, 7 };
+    private bool autoEoi;
     private bool icw4Needed;
     private int icwIndex;
     private int inServiceRegister;
-    private int maskedIrqs; // disabled IRQs
+    private int maskedIrqs; // masked = disabled IRQs
     private int requestRegister;
     private bool returnInServiceRegister;
     private byte vectorOffset = 8;
-    private readonly byte[] priorities = { 0, 1, 8, 9, 10, 11, 12, 13, 14, 15, 3, 4, 5, 6, 7 };
 
-    IEnumerable<int> IInternalDevice.PortNumbers => Enumerable.Range(0x20, 2)/*.Concat(Enumerable.Range(0xA0, 2))*/;
+    IEnumerable<int> IInternalDevice.PortNumbers => Enumerable.Range(0x20, 2).Concat(Enumerable.Range(0xA0, 2));
+
+    public (InterruptVector? interrupt, Action eoi) GetIrq()
+    {
+      for (var i = 0; i < priorities.Length; i++)
+      {
+        var irq = priorities[i];
+        var irqMask = 1 << irq;
+        if ((requestRegister & irqMask) != 0)
+        {
+          requestRegister &= ~irqMask;
+          inServiceRegister |= irqMask;
+          return ((InterruptVector)(vectorOffset + irq), () =>
+          {
+            if (autoEoi) { inServiceRegister &= ~irqMask; }
+          });
+        }
+      }
+
+      return (null, null);
+    }
 
     public void Invoke(Irq irq)
     {
-      var irqMask = GetIrqMask(irq);
+      var irqMask = 1 << (byte)irq;
       if ((maskedIrqs & irqMask) == 0)
       {
         requestRegister |= irqMask;
       }
-    }
-
-    public IEnumerable<InterruptVector> GetPrioritizedIrqs()
-    {
-      foreach (var irq in priorities)
-      {
-        var irqMask = GetIrqMask((Irq)irq);
-        if ((requestRegister & irqMask) != 0)
-        {
-          requestRegister &= (byte)~irqMask;
-          inServiceRegister |= irqMask;
-          yield return (InterruptVector)(vectorOffset + irq);
-        }
-      }
-    }
-
-    public void EndOfInterrupt(Irq irq)
-    {
-      inServiceRegister &= (byte)~GetIrqMask(irq);
-    }
-
-    public void EndOfInterrupts()
-    {
-      inServiceRegister = 0;
     }
 
     byte IInternalDevice.GetByte(int port)
@@ -70,15 +68,15 @@ namespace Masch._8086Emulator.InternalDevices
       return (byte)result;
     }
 
-    private static byte GetIrqMask(Irq irq)
-    {
-      return (byte)(1 << (byte)irq);
-    }
-
     void IInternalDevice.SetByte(int port, byte value)
     {
       if (port == 0x20 || port == 0xA0)
       {
+        //if (port == 0xA0 && xt)
+        //{
+        //  maskedIrqs = 0xFF00 | (byte)maskedIrqs;
+        //}
+
         if ((value & 0x10) != 0) // ICW1 marker
         {
           icw4Needed = (value & 0x01) != 0;
@@ -90,11 +88,11 @@ namespace Masch._8086Emulator.InternalDevices
           {
             inServiceRegister = 0;
           }
-          else if ((value >> 5) == 0b011) // specific EOI
+          else if (value >> 5 == 0b011) // specific EOI
           {
             var irq = value & 0b111;
             if (port == 0xA0) { irq += 8; }
-            EndOfInterrupt((Irq)irq);
+            inServiceRegister &= ~(1 << irq);
           }
         }
         else if ((value & 0x98) == 0x08) // OCW3
@@ -115,6 +113,7 @@ namespace Masch._8086Emulator.InternalDevices
         }
         else if (icwIndex == 4)
         {
+          autoEoi = (value & 010) != 0;
           icwIndex = 0;
         }
         else

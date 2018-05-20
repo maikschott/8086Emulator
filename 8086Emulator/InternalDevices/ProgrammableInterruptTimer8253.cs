@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace Masch._8086Emulator.InternalDevices
 {
@@ -15,6 +16,14 @@ namespace Masch._8086Emulator.InternalDevices
     private const int TimerCount = PcSpeakerTimer + 1;
     private readonly ProgrammableInterruptController8259 pic;
     private readonly Timer[] timers;
+    private readonly List<FutureAction> futureActions = new List<FutureAction>();
+    private Task beepTask = Task.CompletedTask;
+
+    private class FutureAction
+    {
+      public int Ticks;
+      public Action Action;
+    }
 
     public ProgrammableInterruptTimer8253(ProgrammableInterruptController8259 pic)
     {
@@ -23,6 +32,16 @@ namespace Masch._8086Emulator.InternalDevices
       timers[Irq0Timer] = new Timer();
       timers[DramRefreshTimer] = new Timer();
       timers[PcSpeakerTimer] = new Timer();
+    }
+
+    public void PostAction(Action action, int delayTicks = 100)
+    {
+      futureActions.Add(new FutureAction { Ticks = delayTicks, Action = action });
+    }
+
+    public void PostAction(Action action, TimeSpan delay)
+    {
+      futureActions.Add(new FutureAction { Ticks = (int)(delay.TotalSeconds * Frequency), Action = action });
     }
 
     public int SpeakerFrequency
@@ -78,6 +97,20 @@ namespace Masch._8086Emulator.InternalDevices
           }
         }
       }
+
+      var j = 0;
+      while (j < futureActions.Count)
+      {
+        if (--futureActions[j].Ticks == 0)
+        {
+          futureActions[j].Action();
+          futureActions.RemoveAt(j);
+        }
+        else
+        {
+          j++;
+        }
+      }
     }
 
     byte IInternalDevice.GetByte(int port)
@@ -131,6 +164,12 @@ namespace Masch._8086Emulator.InternalDevices
         {
           timer.Latch = null;
           timer.Counter = timer.InitialValue;
+
+          if ((port & 0b11) == 2 && beepTask.IsCompleted)
+          {
+            // The sound should actually be played until it gets deactivated by a call to port 0x61
+            beepTask = Task.Run(() => Console.Beep(Frequency / timer.InitialValue, 250));
+          }
         }
       }
       else if (port == 0x43) // control word register

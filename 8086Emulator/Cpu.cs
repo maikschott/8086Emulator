@@ -10,6 +10,7 @@ namespace Masch._8086Emulator
   {
     public const int TimerTickMultiplier = 4;
     public const int Frequency = ProgrammableInterruptTimer8253.Frequency * TimerTickMultiplier; // 4.77 MHz
+    private readonly string[] debug = new string[4];
 
     private readonly Machine machine;
     private readonly MemoryController memory;
@@ -20,9 +21,9 @@ namespace Masch._8086Emulator
     private int? currentEffectiveAddress;
     private SegmentRegister? dataSegmentRegister;
     private bool dataSegmentRegisterChanged;
-    private string debugParam;
     private bool firstRepetition;
-    private bool isLooping;
+    private Action irqReturnAction;
+    private (int loopStart, int loopEnd)? loop;
     private byte opcodeIndex;
     private Action[] operations;
     private Repeat repeat;
@@ -74,7 +75,7 @@ namespace Masch._8086Emulator
       repeat = Repeat.No;
       clockCount = 0;
       cpuTickOfLastPitTick = 0;
-      isLooping = false;
+      loop = null;
       firstRepetition = false;
     }
 
@@ -90,22 +91,28 @@ namespace Masch._8086Emulator
         }
       }
 
-      debugParam = null;
-      Debug($"[{CS:X4}:{IP:X4}] AX={AX:X4}, BX={BX:X4}, CX={CX:X4}, DX={DX:X4}, SI={SI:X4}, DI={DI:X4}, SP={SP:X4}  ");
+#if TRACE
+      debug[0] = $"[{CS:X4}:{IP:X4}] AX={AX:X4} BX={BX:X4} CX={CX:X4} DX={DX:X4} SI={SI:X4} DI={DI:X4} SP={SP:X4} DS={DS:X4} ES={ES:X4} {(CarryFlag ? 'C' : ' ')}{(ParityFlag ? 'P' : ' ')}{(AuxiliaryCarryFlag ? 'A' : ' ')}{(ZeroFlag ? 'Z' : ' ')}{(SignFlag ? 'S' : ' ')}{(InterruptEnableFlag ? 'I' : ' ')}{(DirectionFlag ? 'D' : ' ')}{(OverflowFlag ? 'O' : ' ')}  ";
+      debug[1] = null;
+      debug[2] = null;
+      debug[3] = null;
+#endif
 
-      //if (IP == 0xF09C) System.Diagnostics.Debugger.Break();
+      //if (IP == 0xE4DC) Debugger.Break();
 
       currentEffectiveAddress = null;
-      Array.Copy(memory.Memory, (CS << 4) + IP, opcodes, 0, 6);
+      memory.ReadBlock((CS << 4) + IP, opcodes, 6);
       opcodeIndex = 0;
       var opcode = ReadCodeByte();
       operations[opcode]();
       if (dataSegmentRegisterChanged) { dataSegmentRegisterChanged = false; }
       else { dataSegmentRegister = null; }
 
-      Debug(" " + debugParam + Environment.NewLine);
+      PrintOpcode();
 
       ProcessIrqs();
+
+      if (TrapFlag) { DoInt(InterruptVector.Debug); } // has lowest interrupt priority
     }
 
     protected void RegisterOperations()
@@ -270,7 +277,7 @@ namespace Masch._8086Emulator
         {
           var offset = ReadCodeWord();
           var segment = ReadCodeWord();
-          Debug($"CALL {segment:X4}:{offset:X4}");
+          SetDebug("CALL", $"{segment:X4}:{offset:X4}");
           DoCall(offset, segment);
 
           clockCount += 28;
@@ -283,32 +290,32 @@ namespace Masch._8086Emulator
         () => // 0xA0
         {
           var addr = ReadCodeWord();
-          Debug($"MOV AL,[{addr:X4}]");
-          AL = memory.ReadByte(addr);
+          SetDebug("MOV", "AL", $"[{addr:X4}]");
+          AL = ReadDataByte(addr);
 
           clockCount += 10;
         },
         () => // 0xA1
         {
           var addr = ReadCodeWord();
-          Debug($"MOV AX,[{addr:X4}]");
-          AX = memory.ReadWord(addr);
+          SetDebug("MOV", "AX", $"[{addr:X4}]");
+          AX = ReadDataWord(addr);
 
           clockCount += 10;
         },
         () => // 0xA2
         {
           var addr = ReadCodeWord();
-          Debug($"MOV [{addr:X4}],AL");
-          memory.WriteByte(addr, AL);
+          SetDebug("MOV", $"[{addr:X4}]", "AL");
+          WriteDataByte(addr, AL);
 
           clockCount += 10;
         },
         () => // 0xA3
         {
           var addr = ReadCodeWord();
-          Debug($"MOV [{addr:X4}],AX");
-          memory.WriteWord(addr, AX);
+          SetDebug("MOV", $"[{addr:X4}]", "AX");
+          WriteDataWord(addr, AX);
 
           clockCount += 10;
         },
@@ -354,13 +361,14 @@ namespace Masch._8086Emulator
         () => RetInterSeg(), // 0xCB
         () => // 0xCC
         {
-          Debug("INT 3");
+          SetDebug("INT", "3");
           DoInt(InterruptVector.Breakpoint);
         },
         () => // 0xCD
         {
-          Debug("INT");
-          DoInt((InterruptVector)ReadCodeByte());
+          var vector = ReadCodeByte();
+          SetDebug("INT", vector.ToString("X2"));
+          DoInt((InterruptVector)vector);
         },
         Into, // 0xCE
         Iret, // 0xCF
@@ -407,7 +415,7 @@ namespace Masch._8086Emulator
         () => // 0xE8
         {
           var relAddr = (short)ReadCodeWord();
-          Debug($"CALL {SignedHex(relAddr)}");
+          SetDebug("CALL", SignedHex(relAddr));
           DoCall((ushort)(IP + relAddr));
 
           clockCount += 19;
@@ -415,7 +423,7 @@ namespace Masch._8086Emulator
         () => // 0xE9
         {
           var relAddr = (short)ReadCodeWord();
-          Debug($"JMP {SignedHex(relAddr)}");
+          SetDebug("JMP", SignedHex(relAddr));
           DoJmp((ushort)(IP + relAddr), CS);
 
           clockCount += 15;
@@ -424,7 +432,7 @@ namespace Masch._8086Emulator
         {
           var offset = ReadCodeWord();
           var segment = ReadCodeWord();
-          Debug($"JMP {segment:X4}:{offset:X4}");
+          SetDebug("JMP", $"{segment:X4}:{offset:X4}");
           DoJmp(offset, segment);
 
           clockCount += 15;
@@ -432,35 +440,35 @@ namespace Masch._8086Emulator
         () => // 0xEB
         {
           var relAddr = (sbyte)ReadCodeByte();
-          Debug($"JMP {SignedHex(relAddr)}");
+          SetDebug("JMP", SignedHex(relAddr));
           DoJmp((ushort)(IP + relAddr), CS);
 
           clockCount += 15;
         },
         () => // 0xEC
         {
-          Debug("IN AL,DX");
+          SetDebug("IN", "AL", "DX");
           AL = PortIn08(DX, false);
 
           clockCount += 8;
         },
         () => // 0xED
         {
-          Debug("IN AX,DX");
+          SetDebug("IN", "AX", "DX");
           AX = PortIn16(DX, false);
 
           clockCount += 8;
         },
         () => // 0xEE
         {
-          Debug("OUT AL,DX");
+          SetDebug("OUT", "AL", "DX");
           PortOut08(DX, false);
 
           clockCount += 8;
         },
         () => // 0xEF
         {
-          Debug("OUT AX,DX");
+          SetDebug("OUT", "AX", "DX");
           PortOut16(DX, false);
 
           clockCount += 8;
@@ -469,7 +477,7 @@ namespace Masch._8086Emulator
         UnknownOpcode, // 0xF1
         () => // 0xF2
         {
-          Debug("REPNE");
+          SetDebug("REPNE");
           repeat = Repeat.Negative;
           firstRepetition = true;
 
@@ -477,7 +485,7 @@ namespace Masch._8086Emulator
         },
         () => // 0xF3
         {
-          Debug("REP");
+          SetDebug("REP");
           repeat = Repeat.Positive;
           firstRepetition = true;
 
@@ -486,7 +494,7 @@ namespace Masch._8086Emulator
         Hlt, // 0xF4
         () => // 0xF5
         {
-          Debug("CMC");
+          SetDebug("CMC");
           CarryFlag = !CarryFlag;
           clockCount += 2;
         },
@@ -494,37 +502,37 @@ namespace Masch._8086Emulator
         OpcodeGroup3, // 0xF7
         () => // 0xF8
         {
-          Debug("CLC");
+          SetDebug("CLC");
           CarryFlag = false;
           clockCount += 2;
         },
         () => // 0xF9
         {
-          Debug("STC");
+          SetDebug("STC");
           CarryFlag = true;
           clockCount += 2;
         },
         () => // 0xFA
         {
-          Debug("CLI");
+          SetDebug("CLI");
           InterruptEnableFlag = false;
           clockCount += 2;
         },
         () => // 0xFB
         {
-          Debug("STI");
+          SetDebug("STI");
           InterruptEnableFlag = true;
           clockCount += 2;
         },
         () => // 0xFC
         {
-          Debug("CLD");
+          SetDebug("CLD");
           DirectionFlag = false;
           clockCount += 2;
         },
         () => // 0xFD
         {
-          Debug("STD");
+          SetDebug("STD");
           DirectionFlag = true;
           clockCount += 2;
         },
@@ -552,34 +560,6 @@ namespace Masch._8086Emulator
       return parity;
     }
 
-    [Conditional("DEBUG")]
-    private void Debug(string text)
-    {
-      if (isLooping || repeat != Repeat.No && !firstRepetition)
-      {
-        debugParam = null;
-        return;
-      }
-
-      if (text != null)
-      {
-        System.Diagnostics.Debug.Write(text);
-      }
-    }
-
-    [Conditional("DEBUG")]
-    private void DebugSourceThenTarget(string text)
-    {
-      if (debugParam == null)
-      {
-        debugParam = text;
-      }
-      else
-      {
-        debugParam = text + "," + debugParam;
-      }
-    }
-
     private int GetEffectiveAddress(byte mod, byte rm, bool useSegment = true)
     {
       string addrText = null;
@@ -603,32 +583,32 @@ namespace Masch._8086Emulator
       switch (rm)
       {
         case 0b000:
-          DebugSourceThenTarget($"[BX+SI{addrText}]");
+          SetDebugSourceThenTarget($"[BX+SI{addrText}]");
           ea = BX + SI + disp;
           clockCount += 7;
           break;
         case 0b001:
-          DebugSourceThenTarget($"[BX+DI{addrText}]");
+          SetDebugSourceThenTarget($"[BX+DI{addrText}]");
           ea = BX + DI + disp;
           clockCount += 8;
           break;
         case 0b010:
-          DebugSourceThenTarget($"[BP+SI{addrText}]");
+          SetDebugSourceThenTarget($"[BP+SI{addrText}]");
           ea = BP + SI + disp;
           clockCount += 8;
           break;
         case 0b011:
-          DebugSourceThenTarget($"[BP+DI{addrText}]");
+          SetDebugSourceThenTarget($"[BP+DI{addrText}]");
           ea = BP + DI + disp;
           clockCount += 7;
           break;
         case 0b100:
-          DebugSourceThenTarget($"[SI{addrText}]");
+          SetDebugSourceThenTarget($"[SI{addrText}]");
           ea = SI + disp;
           clockCount += 5;
           break;
         case 0b101:
-          DebugSourceThenTarget($"[DI{addrText}]");
+          SetDebugSourceThenTarget($"[DI{addrText}]");
           ea = DI + disp;
           clockCount += 5;
           break;
@@ -636,18 +616,18 @@ namespace Masch._8086Emulator
           if (mod == 0b00)
           {
             ea = ReadCodeWord();
-            DebugSourceThenTarget($"[{ea:X4}]");
+            SetDebugSourceThenTarget($"[{ea:X4}]");
             clockCount += 2;
           }
           else
           {
-            DebugSourceThenTarget($"[BP{addrText}]");
+            SetDebugSourceThenTarget($"[BP{addrText}]");
             ea = BP + disp;
             clockCount += 5;
           }
           break;
         case 0b111:
-          DebugSourceThenTarget($"[BX{addrText}]");
+          SetDebugSourceThenTarget($"[BX{addrText}]");
           ea = BX + disp;
           clockCount += 5;
           break;
@@ -685,11 +665,11 @@ namespace Masch._8086Emulator
       }
     }
 
-    private void HandleLogicalOpGroup(Func<byte, byte, byte> func8, Func<ushort, ushort, ushort> func16)
+    private void HandleLogicalOpGroup(Func<int, int, int> func)
     {
       HandleOpGroup(
-        (x, y) => (byte)SetFlagsForLogicalOp(Width.Byte, func8(x, y)),
-        (x, y) => SetFlagsForLogicalOp(Width.Word, func16(x, y)));
+        (x, y) => (byte)SetFlagsForLogicalOp(Width.Byte, (byte)func(x, y)),
+        (x, y) => SetFlagsForLogicalOp(Width.Word, (ushort)func(x, y)));
     }
 
     private void HandleOpGroup(Func<byte, byte, byte?> func8, Func<ushort, ushort, ushort?> func16)
@@ -698,7 +678,7 @@ namespace Masch._8086Emulator
       if (relOpcode == 4) // XXX AL, IMM8
       {
         var value = ReadCodeByte();
-        DebugSourceThenTarget($"AL,{value:X2}");
+        SetDebugSourceThenTarget($"AL,{value:X2}");
 
         AL = func8(AL, value) ?? AL;
         clockCount += 4;
@@ -707,7 +687,7 @@ namespace Masch._8086Emulator
       if (relOpcode == 5) // XXX AX, IMM16
       {
         var value = ReadCodeWord();
-        DebugSourceThenTarget($"AX,{value:X4}");
+        SetDebugSourceThenTarget($"AX,{value:X4}");
 
         AX = func16(AX, value) ?? AX;
         clockCount += 4;
@@ -722,12 +702,12 @@ namespace Masch._8086Emulator
       {
         dst = ReadFromRegisterOrMemory(width, mod, rm);
         src = GetRegisterValue(width, reg);
-        DebugSourceThenTarget(GetRegisterName(width, reg));
+        SetDebugSourceThenTarget(GetRegisterName(width, reg));
       }
       else
       {
         dst = GetRegisterValue(width, reg);
-        DebugSourceThenTarget(GetRegisterName(width, reg));
+        SetDebugSourceThenTarget(GetRegisterName(width, reg));
         src = ReadFromRegisterOrMemory(width, mod, rm);
       }
 
@@ -746,42 +726,54 @@ namespace Masch._8086Emulator
       }
     }
 
+    [Conditional("TRACE")]
+    //[DebuggerStepThrough]
+    private void PrintOpcode()
+    {
+      if (loop.HasValue)
+      {
+        if (IP >= loop.Value.loopStart && IP <= loop.Value.loopEnd)
+        {
+          return;
+        }
+        loop = null;
+      }
+      if (repeat != Repeat.No && !firstRepetition)
+      {
+        return;
+      }
+
+      if (debug[0] != null)
+      {
+        Debug.WriteLine($"{debug[0]} {debug[1]} {debug[2]}{(debug[3] != null ? "," + debug[3] : null)}");
+      }
+    }
+
     private void ProcessIrqs()
     {
       if (!InterruptEnableFlag) { return; }
 
-      var stateWasChanged = false;
-      SegmentRegister? oldDataSegmentRegister = null;
-      var oldRepeat = Repeat.No;
-      var oldIsLooping = false;
+      var (irq, endOfInterrupt) = machine.Pic.GetIrq();
+      if (irq == null) { return; }
 
-      foreach (var irq in machine.Pic.GetPrioritizedIrqs())
+      var oldDataSegmentRegister = dataSegmentRegister;
+      dataSegmentRegister = null;
+
+      var oldRepeat = repeat;
+      repeat = Repeat.No;
+
+      var oldIsLooping = loop;
+      loop = null;
+
+      DoInt(irq.Value, () => InterruptEnableFlag = TrapFlag = false);
+      irqReturnAction = () =>
       {
-        if (!stateWasChanged)
-        {
-          oldDataSegmentRegister = dataSegmentRegister;
-          dataSegmentRegister = null;
-
-          oldRepeat = repeat;
-          repeat = Repeat.No;
-
-          oldIsLooping = isLooping;
-          isLooping = false;
-
-          stateWasChanged = true;
-        }
-
-        DoInt(irq, () => InterruptEnableFlag = TrapFlag = false);
-      }
-
-      if (stateWasChanged)
-      {
-        machine.Pic.EndOfInterrupts();
-
         dataSegmentRegister = oldDataSegmentRegister;
         repeat = oldRepeat;
-        isLooping = oldIsLooping;
-      }
+        loop = oldIsLooping;
+
+        endOfInterrupt();
+      };
     }
 
     private byte ReadCodeByte()
@@ -796,6 +788,16 @@ namespace Masch._8086Emulator
       return (ushort)(opcodes[opcodeIndex++] | (opcodes[opcodeIndex++] << 8));
     }
 
+    private byte ReadDataByte(int addr)
+    {
+      return memory.ReadByte((DataSegment << 4) + (ushort)addr);
+    }
+
+    private ushort ReadDataWord(int addr)
+    {
+      return memory.ReadWord((DataSegment << 4) + (ushort)addr);
+    }
+
     private ushort ReadFromMemory(Width width, int effectiveAddress)
     {
       return width == Width.Byte ? memory.ReadByte(effectiveAddress) : memory.ReadWord(effectiveAddress);
@@ -805,7 +807,7 @@ namespace Masch._8086Emulator
     {
       if (mod == 0b11)
       {
-        DebugSourceThenTarget(GetRegisterName(width, rm));
+        SetDebugSourceThenTarget(GetRegisterName(width, rm));
         return GetRegisterValue(width, rm);
       }
       var addr = currentEffectiveAddress ?? GetEffectiveAddress(mod, rm);
@@ -816,6 +818,21 @@ namespace Masch._8086Emulator
     {
       var b = ReadCodeByte();
       return ((byte)(b >> 6), (byte)((b >> 3) & 0b111), (byte)(b & 0b111));
+    }
+
+    [Conditional("TRACE")]
+    [DebuggerStepThrough]
+    private void SetDebug(params string[] text)
+    {
+      Array.Copy(text, 0, debug, 1, text.Length);
+    }
+
+    [Conditional("TRACE")]
+    [DebuggerStepThrough]
+    private void SetDebugSourceThenTarget(string text)
+    {
+      if (debug[2] == null) { debug[2] = text; }
+      else if (debug[3] == null) { debug[3] = text; }
     }
 
     private ushort SetFlagsForLogicalOp(Width width, ushort result)
@@ -878,15 +895,25 @@ namespace Masch._8086Emulator
 
     private void UnknownOpcode()
     {
-      Debug($"Opcode {opcodes[0]:X2} not supported");
+      Debug.WriteLine($"Opcode {opcodes[0]:X2} not supported");
       DoInt(InterruptVector.InvalidOpcode);
     }
 
     private void UnknownOpcode(byte mod, byte reg, byte rm)
     {
       var modRegRm = (mod << 6) | (reg << 3) | rm;
-      Debug($"Opcode {opcodes[0]:X2}{modRegRm:X2} not supported");
+      Debug.WriteLine($"Opcode {opcodes[0]:X2}{modRegRm:X2} not supported");
       DoInt(InterruptVector.InvalidOpcode);
+    }
+
+    private void WriteDataByte(int addr, byte value)
+    {
+      memory.WriteByte((DataSegment << 4) + (ushort)addr, value);
+    }
+
+    private void WriteDataWord(int addr, ushort value)
+    {
+      memory.WriteWord((DataSegment << 4) + (ushort)addr, value);
     }
 
 
@@ -906,7 +933,7 @@ namespace Masch._8086Emulator
     {
       if (mod == 0b11)
       {
-        DebugSourceThenTarget(GetRegisterName(width, rm));
+        SetDebugSourceThenTarget(GetRegisterName(width, rm));
         SetRegisterValue(width, rm, value());
       }
       else

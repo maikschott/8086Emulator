@@ -1,15 +1,25 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using Masch._8086Emulator.InternalDevices;
 
 namespace Masch._8086Emulator
 {
-  class Program
+  internal class Program
   {
-    static void Main(string[] args)
+    private static void CurrentDomainOnUnhandledException(object sender, UnhandledExceptionEventArgs unhandledExceptionEventArgs)
     {
+      Console.Error.WriteLine(unhandledExceptionEventArgs.ExceptionObject);
+    }
+
+    private static void Main(string[] args)
+    {
+      AppDomain.CurrentDomain.UnhandledException += CurrentDomainOnUnhandledException;
+      TaskScheduler.UnobservedTaskException += TaskSchedulerOnUnobservedTaskException;
+
       if (args.Length == 0)
       {
         return;
@@ -18,7 +28,7 @@ namespace Masch._8086Emulator
 
       byte[] bios = null;
       byte[] program = null;
-      int programAddr = 0;
+      var programAddr = 0;
       foreach (var parameter in parameters)
       {
         switch (parameter.Key)
@@ -42,7 +52,7 @@ namespace Masch._8086Emulator
           case "textseg":
             if (int.TryParse(parameter.Value, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var textSeg))
             {
-              GraphicController.TextStartOfs = textSeg;
+              CrtController6845.TextStartOfs = textSeg;
             }
             break;
         }
@@ -65,6 +75,11 @@ namespace Masch._8086Emulator
       }
 
       machine.Run();
+    }
+
+    private static void TaskSchedulerOnUnobservedTaskException(object sender, UnobservedTaskExceptionEventArgs unobservedTaskExceptionEventArgs)
+    {
+      Console.Error.WriteLine(unobservedTaskExceptionEventArgs.Exception);
     }
   }
 }

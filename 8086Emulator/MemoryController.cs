@@ -1,40 +1,46 @@
-﻿using System;
+﻿#define _MEMORY_CALLBACK
+using System;
+
+#if MEMORY_CALLBACK
 using System.Collections.Generic;
+#endif
 
 namespace Masch._8086Emulator
 {
   public class MemoryController
   {
-    public const int MemorySize = SpecialOffset.HighMemoryArea;  // = 1MB, who would ever need more?
+    public const int MemorySize = SpecialOffset.HighMemoryArea; // = 1MB, who would ever need more?
 
-    private readonly Dictionary<int, Action<int, byte>> registeredBlocks;
-    public byte[] Memory;
+#if MEMORY_CALLBACK
+    private readonly Dictionary<int, Action<int, byte>> registeredBlocks = new Dictionary<int, Action<int, byte>>();
+#endif
+    private readonly byte[] memory;
 
     public MemoryController()
     {
-      Memory = new byte[MemorySize];
-      registeredBlocks = new Dictionary<int, Action<int, byte>>();
+      memory = new byte[MemorySize];
     }
 
     //public ref byte this[int offset] => ref Memory[offset];
 
-    public Memory<byte> GetMemoryBlock(int startOfs, int length)
+    public void ReadBlock(int offset, Array dest, int length)
     {
-      return new Memory<byte>(Memory, startOfs, length);
+      Array.Copy(memory, offset, dest, 0, length);
     }
 
     public byte ReadByte(int offset)
     {
       offset &= 0xFFFFF;
-      return Memory[offset];
+      return memory[offset];
     }
 
     public ushort ReadWord(int offset)
     {
       offset &= 0xFFFFF;
-      return (ushort)(Memory[offset] | (Memory[offset + 1] << 8));
+      return (ushort)(memory[offset] | (memory[offset + 1] << 8));
     }
 
+#if MEMORY_CALLBACK
     public void RegisterChangeNotifier(int startSegment, int exclusiveEndSegment, Action<int, byte> callback)
     {
       if (startSegment < ushort.MinValue || startSegment > ushort.MaxValue) { throw new ArgumentOutOfRangeException(nameof(startSegment)); }
@@ -48,27 +54,39 @@ namespace Masch._8086Emulator
         registeredBlocks.Add(block, callback);
       }
     }
+#endif
+
+    public void WriteBlock(int offset, Array source, int length)
+    {
+      Array.Copy(source, 0, memory, offset, length);
+    }
 
     public void WriteByte(int offset, byte value)
     {
       offset &= 0xFFFFF;
-      Memory[offset] = value;
+      if (offset > SpecialOffset.Bios) { return; } // ROM
+      memory[offset] = value;
+#if MEMORY_CALLBACK
       if (registeredBlocks.TryGetValue(offset >> 8, out var callback)) { callback(offset, value); }
+#endif
     }
 
     public void WriteWord(int offset, ushort value)
     {
       offset &= 0xFFFFF;
+      if (offset > SpecialOffset.Bios) { return; } // ROM
       var lo = (byte)value;
       var hi = (byte)(value >> 8);
-      Memory[offset] = lo;
-      Memory[offset + 1] = hi;
+      memory[offset] = lo;
+      memory[offset + 1] = hi;
 
+#if MEMORY_CALLBACK
       if (registeredBlocks.TryGetValue(offset >> 8, out var callback))
       {
         callback(offset, lo);
         callback(offset + 1, hi);
       }
+#endif
     }
   }
 }

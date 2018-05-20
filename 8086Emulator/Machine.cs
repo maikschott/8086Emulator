@@ -8,7 +8,8 @@ namespace Masch._8086Emulator
 {
   public class Machine
   {
-    private CancellationTokenSource rebootCts;
+    private bool running;
+    private CancellationTokenSource shutdownCts;
 
     public Machine()
     {
@@ -21,14 +22,11 @@ namespace Masch._8086Emulator
 
     public Cpu Cpu { get; }
     public MemoryController MemoryController { get; }
-    public GraphicController Graphics { get; private set; }
+    public CrtController6845 Graphics { get; private set; }
     public ProgrammableInterruptController8259 Pic { get; private set; }
     public ProgrammableInterruptTimer8253 Pit { get; private set; }
 
     public Dictionary<int, IInternalDevice> Ports { get; }
-    public CancellationToken RebootCancellationToken => rebootCts.Token;
-
-    public bool Running { get; set; }
 
     public void LoadAndSetBootstrapper(int segment, byte[] bytes)
     {
@@ -45,14 +43,14 @@ namespace Masch._8086Emulator
       if (segment < 0 || segment > ushort.MaxValue) { throw new ArgumentOutOfRangeException(nameof(segment)); }
       if (bytes == null) { throw new ArgumentNullException(nameof(bytes)); }
 
-      Array.Copy(bytes, 0, MemoryController.Memory, segment << 4, bytes.Length);
+      MemoryController.WriteBlock(segment << 4, bytes, bytes.Length);
     }
 
     public void Reboot()
     {
-      rebootCts?.Cancel();
-      rebootCts = new CancellationTokenSource();
-      
+      shutdownCts?.Cancel();
+      shutdownCts = new CancellationTokenSource();
+
       Cpu.Reset();
       Ports.Clear();
       ConnectInternalDevices();
@@ -60,28 +58,34 @@ namespace Masch._8086Emulator
 
     public void Run()
     {
-      Running = true;
+      running = true;
       var watch = Stopwatch.StartNew();
       var opcodeCount = 0;
-      while (Running)
+      while (running)
       {
         Cpu.Tick();
         opcodeCount++;
-        Thread.Sleep(0);
+        Thread.Yield();
       }
+      shutdownCts.Cancel();
       watch.Stop();
       Console.WriteLine($"\r\nProcessed {opcodeCount:N0} opcodes in {watch.Elapsed} ({opcodeCount / watch.Elapsed.TotalSeconds:N0} op/s, {Cpu.ClockCount / watch.Elapsed.TotalSeconds / 1024 / 1024:F1} MHz)");
+    }
+
+    public void Stop()
+    {
+      running = false;
     }
 
     private void ConnectInternalDevices()
     {
       Pic = new ProgrammableInterruptController8259();
       Pit = new ProgrammableInterruptTimer8253(Pic);
-      Graphics = new GraphicController(MemoryController);
+      Graphics = new CrtController6845(MemoryController, shutdownCts.Token);
       RegisterInternalDevice(new DMAController8237());
       RegisterInternalDevice(Pic);
       RegisterInternalDevice(Pit);
-      RegisterInternalDevice(new ProgrammablePeripheralInterface8255());
+      RegisterInternalDevice(new ProgrammablePeripheralInterface8255(this, shutdownCts.Token));
       RegisterInternalDevice(new CMOSRealTimeClock());
       RegisterInternalDevice(Graphics);
       //RegisterInternalDevice(new ParallelPort());
