@@ -15,3 +15,4 @@ The emulator can run the original IBM PC BIOS and the IBM BASIC operating system
 Used documentation:
 - [Intel 8086 Family User's Manual October 1979](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
 - [OSDev.org](https://wiki.osdev.org/Main_Page)
+- IBM PC BIOS listing (1982-10-27)
