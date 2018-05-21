@@ -14,7 +14,7 @@ namespace Masch._8086Emulator
     public Machine()
     {
       MemoryController = new MemoryController();
-      Cpu = new Cpu(this);
+      Cpu = new Cpu8086(this);
       Ports = new Dictionary<int, IInternalDevice>();
 
       Reboot();

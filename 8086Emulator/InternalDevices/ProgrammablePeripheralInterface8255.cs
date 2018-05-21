@@ -61,6 +61,11 @@ namespace Masch._8086Emulator.InternalDevices
             await Task.Delay(20, shutdownCancellationToken).ConfigureAwait(false);
           }
           PutKey(scanCodes[(byte)consoleKeyInfo.Key]);
+          if (consoleKeyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift))
+          {
+            await Task.Delay(20, shutdownCancellationToken).ConfigureAwait(false);
+            PutKey((byte)(scanCodes[VK_LSHIFT] | 0x80));
+          }
         }
       });
     }

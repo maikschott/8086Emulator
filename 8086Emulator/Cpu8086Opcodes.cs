@@ -3,7 +3,7 @@ using Masch._8086Emulator.InternalDevices;
 
 namespace Masch._8086Emulator
 {
-  public partial class Cpu
+  public partial class Cpu8086
   {
     private void Aaa()
     {
@@ -143,20 +143,25 @@ namespace Masch._8086Emulator
     private void Cmps()
     {
       var width = OpWidth;
-      SetDebug($"CMPS{(width == Width.Byte ? "B" : "W")} (CX={CX:X4})");
-      var dst = ReadFromMemory(width, (ES << 4) + DI);
-      var src = ReadFromMemory(width, (DataSegment << 4) + SI);
-      if (width == Width.Byte) { Sub08((byte)src, (byte)dst); }
-      else { Sub16(src, dst); }
+      if (width == Width.Byte)
+      {
+        SetDebug("CMPSB");
+        var dst = memory.ReadByte((ES << 4) + DI);
+        var src = ReadDataByte(SI);
+        Sub08(src, dst);
+      }
+      else
+      {
+        SetDebug("CMPSW");
+        var dst = memory.ReadWord((ES << 4) + DI);
+        var src = ReadDataWord(SI);
+        Sub16(src, dst);
+        }
 
       SI += GetSourceOrDestDelta(width);
       DI += GetSourceOrDestDelta(width);
 
-      var zf = ZeroFlag;
-      if (repeat == Repeat.Positive && !zf || repeat == Repeat.Negative && zf)
-      {
-        repeat = Repeat.No;
-      }
+      if (repeatWhileNotZero == ZeroFlag) { repeatWhileNotZero = null; }
 
       clockCount += 22;
     }
@@ -255,7 +260,7 @@ namespace Masch._8086Emulator
       CS = segment;
     }
 
-    private void DoInt(InterruptVector interruptVector, Action flagAction = null)
+    protected override void DoInt(InterruptVector interruptVector, Action flagAction = null)
     {
       Push(GetFlags());
       flagAction?.Invoke();
@@ -399,13 +404,21 @@ namespace Masch._8086Emulator
     private void Lods()
     {
       var width = OpWidth;
-      SetDebug($"LODS{(width == Width.Byte ? "B" : "W")} (CX={CX:X4})");
-      SetRegisterValue(width, 0 /* AL or AX */, ReadFromMemory(width, (DataSegment << 4) + SI));
+      if (width == Width.Byte)
+      {
+        SetDebug("LODSB");
+        AL = ReadDataByte(SI);
+      }
+      else
+      {
+        SetDebug("LODSW");
+        AX = ReadDataWord(SI);
+      }
 
       SI += GetSourceOrDestDelta(width);
 
       clockCount += 12;
-      if (repeat != Repeat.No) { clockCount++; }
+      if (repeatWhileNotZero != null) { clockCount++; }
     }
 
     private void Loop()
@@ -557,15 +570,16 @@ namespace Masch._8086Emulator
     private void Movs()
     {
       var width = OpWidth;
-      SetDebug($"MOVS{(width == Width.Byte ? "B" : "W")} (CX={CX:X4})");
       var dstAddr = (ES << 4) + DI;
 
       if (width == Width.Byte)
       {
+        SetDebug($"MOVSB");
         memory.WriteByte(dstAddr, ReadDataByte(SI));
       }
       else
       {
+        SetDebug($"MOVSW");
         memory.WriteWord(dstAddr, ReadDataWord(SI));
       }
 
@@ -687,8 +701,26 @@ namespace Masch._8086Emulator
       var singleBitOpcode = (opcodes[0] & 0x2) == 0;
       var bitCount = singleBitOpcode ? (byte)1 : CL;
       var dst = ReadFromRegisterOrMemory(width, mod, rm);
+
+      DoBitShift(width, mod, reg, rm, dst, bitCount);
+
+      if (singleBitOpcode)
+      {
+        debug[3] = "1";
+        clockCount += mod == 0b11 ? 2 : 15;
+      }
+      else
+      {
+        debug[3] = nameof(CL);
+        clockCount += (mod == 0b11 ? 8 : 20) + 4 * bitCount;
+      }
+    }
+
+    protected void DoBitShift(Width width, byte mod, byte reg, byte rm, ushort dst, byte bitCount)
+    {
       var msb = width == Width.Byte ? (ushort)0x80 : (ushort)0x8000;
-      var tmpcf = CarryFlag;
+      bool tmpcf;
+      var wasSigned = (dst & msb) != 0;
 
       switch (reg)
       {
@@ -703,7 +735,6 @@ namespace Masch._8086Emulator
             if (tmpcf) { dst |= 1; }
             CarryFlag = tmpcf;
           }
-          OverflowFlag = tmpcf != ((dst & msb) != 0);
           break;
         case 1:
           SetDebug("ROR");
@@ -716,7 +747,6 @@ namespace Masch._8086Emulator
             if (tmpcf) { dst |= msb; }
             CarryFlag = tmpcf;
           }
-          OverflowFlag = tmpcf != ((dst & (msb >> 1)) != 0);
           break;
         case 2:
           SetDebug("RCL");
@@ -729,7 +759,6 @@ namespace Masch._8086Emulator
             dst <<= 1;
             if (tmpcf) { dst |= 1; }
           }
-          OverflowFlag = CarryFlag != ((dst & msb) != 0);
           break;
         case 3:
           SetDebug("RCR");
@@ -742,10 +771,10 @@ namespace Masch._8086Emulator
             dst >>= 1;
             if (tmpcf) { dst |= msb; }
           }
-          OverflowFlag = tmpcf != ((dst & (msb >> 1)) != 0);
           break;
         case 4:
-          SetDebug("SHL");
+        case 6: // undocumented
+          SetDebug(reg == 4 ? "SHL" : "SAL");
           if (bitCount == 0) { break; }
 
           for (var bit = 0; bit < bitCount; bit++)
@@ -755,7 +784,6 @@ namespace Masch._8086Emulator
             SetFlagsForLogicalOp(width, dst);
             CarryFlag = tmpcf;
           }
-          OverflowFlag = tmpcf != ((dst & msb) != 0);
           break;
         case 5:
           SetDebug("SHR");
@@ -768,17 +796,18 @@ namespace Masch._8086Emulator
             SetFlagsForLogicalOp(width, dst);
             CarryFlag = tmpcf;
           }
-          OverflowFlag = (dst & msb) != 0 != ((dst & (msb >> 1)) != 0);
           break;
         case 7:
           SetDebug("SAR");
           if (bitCount == 0) { break; }
 
+          var sign = (ushort)(dst & msb);
+          var mask = ~msb;
+
           for (var bit = 0; bit < bitCount; bit++)
           {
             tmpcf = (dst & 1) != 0;
-            var sign = (ushort)(dst & msb);
-            dst = (ushort)(((dst & ~msb) >> 1) | sign);
+            dst = (ushort)(((dst & mask) >> 1) | sign);
             SetFlagsForLogicalOp(width, dst);
             CarryFlag = tmpcf;
           }
@@ -789,15 +818,8 @@ namespace Masch._8086Emulator
       }
       WriteToRegisterOrMemory(width, mod, rm, () => dst);
 
-      if (singleBitOpcode)
-      {
-        SetDebugSourceThenTarget(nameof(CL));
-        clockCount += mod == 0b11 ? 2 : 15;
-      }
-      else
-      {
-        clockCount += (mod == 0b11 ? 8 : 20) + 4 * bitCount;
-      }
+      var isSigned = (dst & msb) != 0;
+      OverflowFlag = wasSigned != isSigned;
     }
 
     private void OpcodeGroup3()
@@ -810,6 +832,7 @@ namespace Masch._8086Emulator
       switch (reg)
       {
         case 0:
+        case 1: // undocumented
           SetDebug("TEST");
           dst = width == Width.Byte ? ReadCodeByte() : ReadCodeWord();
           SetDebugSourceThenTarget(dst.ToString("X" + (byte)width * 2));
@@ -817,13 +840,13 @@ namespace Masch._8086Emulator
 
           clockCount += mod == 0b11 ? 5 : 11;
           break;
-        case 1:
+        case 2:
           SetDebug("NOT");
           WriteToRegisterOrMemory(width, mod, rm, () => (ushort)~src);
 
           clockCount += mod == 0b11 ? 3 : 16;
           break;
-        case 2:
+        case 3:
           SetDebug("NEG");
           if (width == Width.Byte)
           {
@@ -845,7 +868,7 @@ namespace Masch._8086Emulator
 
           clockCount += mod == 0b11 ? 3 : 16;
           break;
-        case 3:
+        case 4:
           SetDebug("MUL");
           if (width == Width.Byte)
           {
@@ -856,7 +879,7 @@ namespace Masch._8086Emulator
           }
           else
           {
-            var result = AX * src;
+            var result = (uint)(AX * src);
             AX = (ushort)result;
             DX = (ushort)(result >> 16);
             CarryFlag = OverflowFlag = DX > 0;
@@ -864,8 +887,9 @@ namespace Masch._8086Emulator
             clockCount += mod == 0b11 ? (133 - 118) / 2 : (139 - 124) / 2;
           }
           break;
-        case 4:
-          SetDebug("IMUL");
+        case 5:
+          SetDebug("IMUL");          
+
           if (width == Width.Byte)
           {
             AX = (ushort)((sbyte)AL * (sbyte)src);
@@ -875,15 +899,12 @@ namespace Masch._8086Emulator
           }
           else
           {
-            var result = (short)AX * (short)src;
-            AX = (ushort)result;
-            DX = (ushort)(result >> 16);
-            CarryFlag = OverflowFlag = DX > 0 && DX < 0xFFFF;
+            (DX, AX) = Imul16((short)AX, (short)src);
 
             clockCount += mod == 0b11 ? (104 - 86) / 2 : (160 - 134) / 2;
           }
           break;
-        case 5:
+        case 6:
           SetDebug("DIV");
           if (src == 0)
           {
@@ -918,7 +939,7 @@ namespace Masch._8086Emulator
             clockCount += mod == 0b11 ? (162 - 144) / 2 : (168 - 150) / 2;
           }
           break;
-        case 6:
+        case 7:
           SetDebug("IDIV");
           if (src == 0)
           {
@@ -961,6 +982,16 @@ namespace Masch._8086Emulator
       }
     }
 
+    protected (ushort hi, ushort lo) Imul16(short op1, short op2)
+    {
+      var result = op1 * op2;
+      var lo = (ushort)result;
+      var hi = (ushort)(result >> 16);
+      CarryFlag = OverflowFlag = hi > 0 && hi < 0xFFFF;
+
+      return (hi, lo);
+    }
+
     private void OpcodeGroup4()
     {
       var width = OpWidth;
@@ -973,6 +1004,7 @@ namespace Masch._8086Emulator
           SetDebug("INC");
           var incResult = width == Width.Byte ? Add08((byte)src, 1) : Add16(src, 1);
           WriteToRegisterOrMemory(width, mod, rm, () => incResult);
+          debug[3] = null;
           CarryFlag = oldCarry;
 
           clockCount += mod == 0b11 ? 3 : 15;
@@ -981,6 +1013,7 @@ namespace Masch._8086Emulator
           SetDebug("DEC");
           var decResult = width == Width.Byte ? Sub08((byte)src, 1) : Sub16(src, 1);
           WriteToRegisterOrMemory(width, mod, rm, () => decResult);
+          debug[3] = null;
           CarryFlag = oldCarry;
 
           clockCount += mod == 0b11 ? 3 : 15;
@@ -1002,6 +1035,7 @@ namespace Masch._8086Emulator
         case 0:
           SetDebug("INC");
           WriteToRegisterOrMemory(Width.Word, mod, rm, () => Add16(src, 1));
+          debug[3] = null;
           CarryFlag = oldCarry;
 
           clockCount += mod == 0b11 ? 3 : 15;
@@ -1009,6 +1043,7 @@ namespace Masch._8086Emulator
         case 1:
           SetDebug("DEC");
           WriteToRegisterOrMemory(Width.Word, mod, rm, () => Sub16(src, 1));
+          debug[3] = null;
           CarryFlag = oldCarry;
 
           clockCount += mod == 0b11 ? 3 : 15;
@@ -1069,7 +1104,7 @@ namespace Masch._8086Emulator
       HandleLogicalOpGroup((x, y) => x | y);
     }
 
-    private ushort Pop()
+    protected ushort Pop()
     {
       var value = memory.ReadWord((SS << 4) + SP);
       SP += 2;
@@ -1170,7 +1205,7 @@ namespace Masch._8086Emulator
       }
     }
 
-    private void Push(ushort value)
+    protected void Push(ushort value)
     {
       SP -= 2;
       memory.WriteWord((SS << 4) + SP, value);
@@ -1205,21 +1240,20 @@ namespace Masch._8086Emulator
     // ReSharper disable once InconsistentNaming
     private void RepeatCX(Action action)
     {
-      if (repeat != Repeat.No)
+      if (repeatWhileNotZero != null)
       {
         if (CX == 0)
         {
-          repeat = Repeat.No;
+          repeatWhileNotZero = null;
           return;
         }
       }
 
       action();
-      firstRepetition = false;
 
-      if (repeat != Repeat.No)
+      if (repeatWhileNotZero != null)
       {
-        if (--CX == 0) { repeat = Repeat.No; }
+        if (--CX == 0) { repeatWhileNotZero = null; }
         else { IP -= opcodeIndex; }
       }
     }
@@ -1275,18 +1309,23 @@ namespace Masch._8086Emulator
     private void Scas()
     {
       var width = OpWidth;
-      SetDebug($"SCAS{(width == Width.Byte ? "B" : "W")} (CX={CX:X4})");
-      var dst = ReadFromMemory(width, (ES << 4) + DI);
-      if (width == Width.Byte) { Sub08(AL, (byte)dst); }
-      else { Sub16(AX, dst); }
+      var addr = (ES << 4) + DI;
+      if (width == Width.Byte)
+      {
+        SetDebug("SCASB");
+        var dst = memory.ReadByte(addr);
+        Sub08(AL, dst);
+      }
+      else
+      {
+        SetDebug("SCASW");
+        var dst = memory.ReadWord(addr);
+        Sub16(AX, dst);
+      }
 
       DI += GetSourceOrDestDelta(width);
 
-      var zf = ZeroFlag;
-      if (repeat == Repeat.Positive && !zf || repeat == Repeat.Negative && zf)
-      {
-        repeat = Repeat.No;
-      }
+      if (repeatWhileNotZero == ZeroFlag) { repeatWhileNotZero = null; }
 
       clockCount += 15;
     }
@@ -1294,12 +1333,21 @@ namespace Masch._8086Emulator
     private void Stos()
     {
       var width = OpWidth;
-      SetDebug($"STOS{(width == Width.Byte ? "B" : "W")} (CX={CX:X4})");
-      WriteToMemory(width, (ES << 4) + DI, GetRegisterValue(width, 0 /* AL or AX */));
+      var addr = (ES << 4) + DI;
+      if (width == Width.Byte)
+      {
+        SetDebug("STOSB");
+        memory.WriteByte(addr, AL);
+      }
+      else
+      {
+        SetDebug("STOSW");
+        memory.WriteWord(addr, AX);
+      }
 
       DI += GetSourceOrDestDelta(width);
 
-      clockCount += repeat == Repeat.No ? 11 : 10;
+      clockCount += repeatWhileNotZero == null ? 11 : 10;
     }
 
     private void Sub()
@@ -1319,13 +1367,13 @@ namespace Masch._8086Emulator
       return result;
     }
 
-    private ushort Sub16(ushort dst, ushort src, byte borrow = 0)
+    private ushort Sub16(ushort op1, ushort op2, byte borrow = 0)
     {
-      var temp = (uint)(dst - src - borrow);
+      var temp = (uint)(op1 - op2 - borrow);
       var result = (ushort)temp;
       CarryFlag = (temp & 0xFFFF0000U) != 0;
-      OverflowFlag = ((temp ^ dst) & (src ^ dst) & 0x8000U) != 0;
-      AuxiliaryCarryFlag = ((dst ^ src ^ temp) & 0x10U) != 0;
+      OverflowFlag = ((temp ^ op1) & (op2 ^ op1) & 0x8000U) != 0;
+      AuxiliaryCarryFlag = ((op1 ^ op2 ^ temp) & 0x10U) != 0;
       SetFlagsFromValue(Width.Word, result);
       return result;
     }

@@ -60,6 +60,7 @@ namespace Masch._8086Emulator.InternalDevices
     private int pageOfs;
     private byte registerIndex, stateIndex;
     private int rows;
+    private bool cursorPositionChanged;
 
     public CrtController6845(MemoryController memoryController, CancellationToken shutdownCancellationToken)
     {
@@ -77,6 +78,13 @@ namespace Masch._8086Emulator.InternalDevices
         {
           var task = Task.Delay(refreshDelay, shutdownCancellationToken);
           CopyMemoryToConsoleBuffer();
+
+          if (cursorPositionChanged)
+          {
+            cursorPositionChanged = false;
+            SetCursorPosition((registers[RegisterCursorAddrHi] << 8) | registers[RegisterCursorAddrLo]);
+          }
+
           await task.ConfigureAwait(false);
         }
       });
@@ -153,7 +161,7 @@ namespace Masch._8086Emulator.InternalDevices
                 break;
               //case RegisterCursorAddrHi:
               case RegisterCursorAddrLo:
-                SetCursorPosition((registers[RegisterCursorAddrHi] << 8) | registers[RegisterCursorAddrLo]);
+                cursorPositionChanged = true;
                 break;
             }
           }

@@ -10,7 +10,7 @@ Additionally implemented internal devices are:
 - Programmable Interrupt Controller 8259,
 - CMOS real time clock.
 
-The emulator can run the original IBM PC BIOS and the IBM BASIC operating system.
+The emulator can run the original IBM PC BIOS and the IBM (Cassette) BASIC interpreter.
 
 Used documentation:
 - [Intel 8086 Family User's Manual October 1979](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
