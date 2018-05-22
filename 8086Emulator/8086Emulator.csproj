@@ -42,8 +42,8 @@
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Cpu80186.cs" />
-    <Compile Include="Cpu.cs" />
+    <Compile Include="CPU\Cpu80186.cs" />
+    <Compile Include="CPU\Cpu.cs" />
     <Compile Include="InternalDevices\CMOSRealTimeClock.cs" />
     <Compile Include="InternalDevices\ProgrammablePeripheralInterface8255.cs" />
     <Compile Include="Irq.cs" />
@@ -52,9 +52,9 @@
     <Compile Include="InternalDevices\I16BitInternalDevice.cs" />
     <Compile Include="InternalDevices\ParallelPort.cs" />
     <Compile Include="InternalDevices\ProgrammableInterruptController8259.cs" />
-    <Compile Include="Cpu8086.cs" />
-    <Compile Include="Cpu8086Opcodes.cs" />
-    <Compile Include="CpuState.cs" />
+    <Compile Include="CPU\Cpu8086.cs" />
+    <Compile Include="CPU\Cpu8086Opcodes.cs" />
+    <Compile Include="CPU\CpuState.cs" />
     <Compile Include="InternalDevices\DMAController8237.cs" />
     <Compile Include="InterruptVector.cs" />
     <Compile Include="Machine.cs" />

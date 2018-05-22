@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics.CodeAnalysis;
 
-namespace Masch._8086Emulator
+namespace Masch._8086Emulator.CPU
 {
   [SuppressMessage("ReSharper", "InconsistentNaming")]
   public class CpuState

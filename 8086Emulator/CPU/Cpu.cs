@@ -4,7 +4,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Masch._8086Emulator.InternalDevices;
 
-namespace Masch._8086Emulator
+namespace Masch._8086Emulator.CPU
 {
   public abstract class Cpu : CpuState
   {
@@ -111,7 +111,7 @@ namespace Masch._8086Emulator
 
       ProcessIrqs();
 
-      if (TrapFlag) { DoInt(InterruptVector.Debug); } // has lowest interrupt priority
+      if (TrapFlag) { DoInt(InterruptVector.CpuDebug); } // has lowest interrupt priority
     }
 
     protected abstract void DoInt(InterruptVector interruptVector, Action flagAction = null);
@@ -227,6 +227,13 @@ namespace Masch._8086Emulator
         default:
           throw new ArgumentOutOfRangeException(nameof(segmentRegister));
       }
+    }
+
+    protected ushort GetSourceOrDestDelta(Width width)
+    {
+      var delta = (int)width;
+      if (DirectionFlag) { delta = -delta; }
+      return (ushort)delta;
     }
 
     protected void HandleLogicalOpGroup(Func<int, int, int> func)
@@ -409,17 +416,9 @@ namespace Masch._8086Emulator
       return $"{(value < 0 ? '-' : '+')}{Math.Abs(value):X4}";
     }
 
-    protected void UnknownOpcode()
+    protected virtual void UnknownOpcode(byte mod, byte reg, byte rm)
     {
-      Debug.WriteLine($"Opcode {opcodes[0]:X2} not supported");
-      DoInt(InterruptVector.InvalidOpcode);
-    }
-
-    protected void UnknownOpcode(byte mod, byte reg, byte rm)
-    {
-      var modRegRm = (mod << 6) | (reg << 3) | rm;
-      Debug.WriteLine($"Opcode {opcodes[0]:X2}{modRegRm:X2} not supported");
-      DoInt(InterruptVector.InvalidOpcode);
+      Debug.WriteLine($"Opcode {opcodes[0]:X2}{(mod << 6) | (reg << 3) | rm:X2} not supported", "Warning");
     }
 
     protected void WriteDataByte(int addr, byte value)

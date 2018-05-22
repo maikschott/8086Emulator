@@ -1,7 +1,7 @@
 ﻿using System;
 using Masch._8086Emulator.InternalDevices;
 
-namespace Masch._8086Emulator
+namespace Masch._8086Emulator.CPU
 {
   public partial class Cpu8086
   {
@@ -26,7 +26,10 @@ namespace Masch._8086Emulator
     private void Aad()
     {
       SetDebug("AAD");
-      AX = (byte)(AH * ReadCodeByte() + AL);
+      // value != 10 was undocumented up until the Pentium
+      var value = ReadCodeByte();
+      if (value != 10) { SetDebugSourceThenTarget(value.ToString("X2")); }
+      AX = (byte)(AH * value + AL);
       SetFlagsFromValue(Width.Byte, AL);
 
       clockCount += 60;
@@ -36,12 +39,14 @@ namespace Masch._8086Emulator
     {
       SetDebug("AAM");
       var value = ReadCodeByte();
+      if (value != 10) { SetDebugSourceThenTarget(value.ToString("X2")); }
       if (value == 0)
       {
-        DoInt(InterruptVector.DivideByZero);
+        DoInt(InterruptVector.CpuDivideByZero);
       }
       else
       {
+        // value != 10 was undocumented up until the Pentium
         AH = (byte)(AL / value);
         AL = (byte)(AL % value);
         SetFlagsFromValue(Width.Word, AX);
@@ -277,20 +282,13 @@ namespace Masch._8086Emulator
       IP = offset;
     }
 
-    private void Esc()
+    protected virtual void Esc()
     {
       SetDebug("ESC");
       var (mod, _, rm) = ReadModRegRm();
       GetEffectiveAddress(mod, rm);
 
       clockCount = mod == 0b11 ? 2 : 8;
-    }
-
-    private ushort GetSourceOrDestDelta(Width width)
-    {
-      var delta = (int)width;
-      if (DirectionFlag) { delta = -delta; }
-      return (ushort)delta;
     }
 
     private void Hlt()
@@ -318,7 +316,7 @@ namespace Masch._8086Emulator
       SetDebug("INTO");
       if (OverflowFlag)
       {
-        DoInt(InterruptVector.Overflow);
+        DoInt(InterruptVector.CpuOverflow);
 
         clockCount += 2; // +51 of INT 
       }
@@ -561,8 +559,14 @@ namespace Masch._8086Emulator
     {
       SetDebug("MOV");
       var (mod, reg, rm) = ReadModRegRm();
-      SetSegmentRegisterValue((SegmentRegister)reg, ReadFromRegisterOrMemory(Width.Word, mod, rm));
-      SetDebugSourceThenTarget(((SegmentRegister)reg).ToString());
+      var segReg = (SegmentRegister)reg;
+      if (segReg == SegmentRegister.CS && this is Cpu80186) // only allowed on the 8086
+      {
+        UnknownOpcode(mod, reg, rm);
+        return;
+      }
+      SetSegmentRegisterValue(segReg, ReadFromRegisterOrMemory(Width.Word, mod, rm));
+      SetDebugSourceThenTarget(segReg.ToString());
 
       clockCount += mod == 0b11 ? 2 : 8;
     }
@@ -718,6 +722,7 @@ namespace Masch._8086Emulator
 
     protected void DoBitShift(Width width, byte mod, byte reg, byte rm, ushort dst, byte bitCount)
     {
+      bitCount &= 0x1F;
       var msb = width == Width.Byte ? (ushort)0x80 : (ushort)0x8000;
       bool tmpcf;
       var wasSigned = (dst & msb) != 0;
@@ -908,7 +913,7 @@ namespace Masch._8086Emulator
           SetDebug("DIV");
           if (src == 0)
           {
-            DoInt(InterruptVector.DivideByZero);
+            DoInt(InterruptVector.CpuDivideByZero);
             return;
           }
 
@@ -916,7 +921,7 @@ namespace Masch._8086Emulator
           {
             dst = AX;
             var result = (ushort)(dst / src);
-            if (result > byte.MaxValue) { DoInt(InterruptVector.DivideByZero); }
+            if (result > byte.MaxValue) { DoInt(InterruptVector.CpuDivideByZero); }
             else
             {
               AL = (byte)result;
@@ -929,7 +934,7 @@ namespace Masch._8086Emulator
           {
             var longdst = (uint)((DX << 16) | AX);
             var result = longdst / src;
-            if (result > ushort.MaxValue) { DoInt(InterruptVector.DivideByZero); }
+            if (result > ushort.MaxValue) { DoInt(InterruptVector.CpuDivideByZero); }
             else
             {
               AX = (ushort)result;
@@ -943,7 +948,7 @@ namespace Masch._8086Emulator
           SetDebug("IDIV");
           if (src == 0)
           {
-            DoInt(InterruptVector.DivideByZero);
+            DoInt(InterruptVector.CpuDivideByZero);
             return;
           }
 
@@ -952,7 +957,7 @@ namespace Masch._8086Emulator
             var ssrc = (sbyte)src;
             var sdst = (short)AX;
             var result = sdst / ssrc;
-            if (result > sbyte.MaxValue || result < sbyte.MinValue) { DoInt(InterruptVector.DivideByZero); }
+            if (result > sbyte.MaxValue || result < sbyte.MinValue) { DoInt(InterruptVector.CpuDivideByZero); }
             else
             {
               AL = (byte)result;
@@ -966,7 +971,7 @@ namespace Masch._8086Emulator
             var ssrc = (short)src;
             var sdst = (DX << 16) | AX;
             var result = sdst / ssrc;
-            if (result > short.MaxValue || result < short.MinValue) { DoInt(InterruptVector.DivideByZero); }
+            if (result > short.MaxValue || result < short.MinValue) { DoInt(InterruptVector.CpuDivideByZero); }
             else
             {
               AX = (ushort)result;
@@ -1153,14 +1158,14 @@ namespace Masch._8086Emulator
       clockCount += 8;
     }
 
-    private byte PortIn08(ushort port, bool setDebug = true)
+    protected byte PortIn08(ushort port, bool setDebug = true)
     {
       if (setDebug) { SetDebug("IN", "AL", port.ToString("X2")); }
 
       return machine.Ports.TryGetValue(port, out var handler) ? handler.GetByte(port) : (byte)0;
     }
 
-    private ushort PortIn16(ushort port, bool setDebug = true)
+    protected ushort PortIn16(ushort port, bool setDebug = true)
     {
       if (setDebug) { SetDebug("IN", "AX", port.ToString("X2")); }
 
@@ -1177,17 +1182,14 @@ namespace Masch._8086Emulator
       return 0;
     }
 
-    private void PortOut08(ushort port, bool setDebug = true)
+    protected void PortOut08(ushort port, byte value, bool setDebug = true)
     {
       if (setDebug) { SetDebug("OUT", port.ToString("X2"), "AL"); }
 
-      if (machine.Ports.TryGetValue(port, out var handler))
-      {
-        handler.SetByte(port, AL);
-      }
+      if (machine.Ports.TryGetValue(port, out var handler)) { handler.SetByte(port, value); }
     }
 
-    private void PortOut16(ushort port, bool setDebug = true)
+    protected void PortOut16(ushort port, ushort value, bool setDebug = true)
     {
       if (setDebug) { SetDebug("OUT", port.ToString("X2"), "AX"); }
 
@@ -1195,12 +1197,12 @@ namespace Masch._8086Emulator
       {
         if (handler is I16BitInternalDevice wordHandler)
         {
-          wordHandler.SetWord(port, AX);
+          wordHandler.SetWord(port, value);
         }
         else
         {
-          handler.SetByte(port, AL);
-          handler.SetByte(port + 1, AH);
+          handler.SetByte(port, (byte)value);
+          handler.SetByte(port + 1, (byte)(value >> 8));
         }
       }
     }
@@ -1238,7 +1240,7 @@ namespace Masch._8086Emulator
     }
 
     // ReSharper disable once InconsistentNaming
-    private void RepeatCX(Action action)
+    protected void RepeatCX(Action action)
     {
       if (repeatWhileNotZero != null)
       {

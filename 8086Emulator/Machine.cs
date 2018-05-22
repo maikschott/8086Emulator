@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
+using Masch._8086Emulator.CPU;
 using Masch._8086Emulator.InternalDevices;
 
 namespace Masch._8086Emulator

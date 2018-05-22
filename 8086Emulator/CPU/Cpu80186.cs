@@ -1,6 +1,7 @@
 ﻿using System;
+using System.Diagnostics;
 
-namespace Masch._8086Emulator
+namespace Masch._8086Emulator.CPU
 {
   public class Cpu80186 : Cpu8086
   {
@@ -9,25 +10,52 @@ namespace Masch._8086Emulator
     {
     }
 
+    protected override void Esc()
+    {
+      base.Esc();
+      DoInt(InterruptVector.CpuProcessorExtensionNotAvailable);
+    }
+
     protected override Action[] RegisterOperations()
     {
       var operations = base.RegisterOperations();
 
+      operations[0x0F] = UnknownOpcode;
       operations[0x60] = Pusha;
       operations[0x61] = Popa;
       operations[0x62] = Bound;
+      operations[0x63] = UnknownOpcode;
+      operations[0x64] = UnknownOpcode;
+      operations[0x65] = UnknownOpcode;
+      operations[0x66] = UnknownOpcode;
+      operations[0x67] = UnknownOpcode;
       operations[0x68] = PushImmediate16;
       operations[0x69] = ImulImmediate16;
       operations[0x6A] = PushImmediate08;
       operations[0x6B] = ImulImmediate08;
-      operations[0x6C] = Ins;
-      operations[0x6E] = Outs;
-      operations[0xC0] = OpcodeGroup6; // like OpcodeGroup2 but with immediate values
-      operations[0xC1] = OpcodeGroup6; // like OpcodeGroup2 but with immediate values
+      operations[0x6C] = () => RepeatCX(Ins);
+      operations[0x6D] = () => RepeatCX(Ins);
+      operations[0x6E] = () => RepeatCX(Outs);
+      operations[0x6F] = () => RepeatCX(Outs);
+      operations[0xC0] = OpcodeGroup2_80186;
+      operations[0xC1] = OpcodeGroup2_80186;
       operations[0xC8] = Enter;
       operations[0xC9] = Leave;
+      operations[0xF1] = UnknownOpcode;
 
       return operations;
+    }
+
+    protected void UnknownOpcode()
+    {
+      Debug.WriteLine($"Opcode {opcodes[0]:X2} not supported", "Warning");
+      DoInt(InterruptVector.CpuInvalidOpcode);
+    }
+
+    protected override void UnknownOpcode(byte mod, byte reg, byte rm)
+    {
+      base.UnknownOpcode(mod, reg, rm);
+      DoInt(InterruptVector.CpuInvalidOpcode);
     }
 
     private void Bound()
@@ -41,7 +69,7 @@ namespace Masch._8086Emulator
 
       if (Registers[reg] < lowerBound || Registers[reg] > upperBound)
       {
-        DoInt(InterruptVector.BoundRangeExceeded);
+        DoInt(InterruptVector.CpuBoundRangeExceeded);
       }
 
       clockCount += 13; // 286
@@ -60,7 +88,7 @@ namespace Masch._8086Emulator
       var frameTemp = SP;
       if (nestingLevel > 0)
       {
-        for (int i = 1; i < nestingLevel; i++)
+        for (var i = 1; i < nestingLevel; i++)
         {
           BP -= 2;
           Push(BP);
@@ -108,8 +136,21 @@ namespace Masch._8086Emulator
 
     private void Ins()
     {
-      SetDebug("INS");
-      throw new NotImplementedException();
+      var width = OpWidth;
+      var dstAddr = (ES << 4) + DI;
+
+      if (width == Width.Byte)
+      {
+        SetDebug($"INSB");
+        memory.WriteByte(dstAddr, PortIn08(DX, false));
+      }
+      else
+      {
+        SetDebug($"INSW");
+        memory.WriteWord(dstAddr, PortIn16(DX, false));
+      }
+
+      DI += GetSourceOrDestDelta(width);
     }
 
     private void Leave()
@@ -122,7 +163,7 @@ namespace Masch._8086Emulator
       clockCount += 5; // 286
     }
 
-    private void OpcodeGroup6()
+    private void OpcodeGroup2_80186()
     {
       var width = OpWidth;
       var (mod, reg, rm) = ReadModRegRm();
@@ -139,8 +180,19 @@ namespace Masch._8086Emulator
 
     private void Outs()
     {
-      SetDebug("OUTS");
-      throw new NotImplementedException();
+      var width = OpWidth;
+      if (width == Width.Byte)
+      {
+        SetDebug($"OUTSB");
+        PortOut08(DX, ReadDataByte(SI), false);
+      }
+      else
+      {
+        SetDebug($"OUTSW");
+        PortOut16(DX, ReadDataWord(SI), false);
+      }
+
+      SI += GetSourceOrDestDelta(width);
     }
 
     private void Popa()

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Masch._8086Emulator
+namespace Masch._8086Emulator.CPU
 {
   public partial class Cpu8086 : Cpu
   {
@@ -28,7 +28,7 @@ namespace Masch._8086Emulator
         Or, // 0x0C
         Or, // 0x0D
         PushSegment, // 0x0E
-        UnknownOpcode, // 0x0F
+        PopSegment, // 0x0F, undocumented
         Adc, // 0x10
         Adc, // 0x11
         Adc, // 0x12
@@ -109,22 +109,22 @@ namespace Masch._8086Emulator
         PopRegister, // 0x5D
         PopRegister, // 0x5E
         PopRegister, // 0x5F
-        UnknownOpcode, // 0x60
-        UnknownOpcode, // 0x61
-        UnknownOpcode, // 0x62
-        UnknownOpcode, // 0x63
-        UnknownOpcode, // 0x64
-        UnknownOpcode, // 0x65
-        UnknownOpcode, // 0x66
-        UnknownOpcode, // 0x67
-        UnknownOpcode, // 0x68
-        UnknownOpcode, // 0x69
-        UnknownOpcode, // 0x6A
-        UnknownOpcode, // 0x6B
-        UnknownOpcode, // 0x6C
-        UnknownOpcode, // 0x6D
-        UnknownOpcode, // 0x6E
-        UnknownOpcode, // 0x6F
+        () => JumpShortConditional(OverflowFlag, "JO"), // 0x60, undocumented
+        () => JumpShortConditional(!OverflowFlag, "JNO"), // 0x61, undocumented
+        () => JumpShortConditional(CarryFlag, "JC"), // 0x62, undocumented
+        () => JumpShortConditional(!CarryFlag, "JNC"), // 0x63, undocumented
+        () => JumpShortConditional(ZeroFlag, "JZ"), // 0x64, undocumented
+        () => JumpShortConditional(!ZeroFlag, "JNZ"), // 0x65, undocumented
+        () => JumpShortConditional(BelowOrEqual, "JBE"), // 0x66, undocumented
+        () => JumpShortConditional(!BelowOrEqual, "JNBE"), // 0x67, undocumented
+        () => JumpShortConditional(SignFlag, "JS"), // 0x68, undocumented
+        () => JumpShortConditional(!SignFlag, "JNS"), // 0x69, undocumented
+        () => JumpShortConditional(ParityFlag, "JP"), // 0x6A, undocumented
+        () => JumpShortConditional(!ParityFlag, "JNP"), // 0x6B, undocumented
+        () => JumpShortConditional(Less, "JL"), // 0x6C, undocumented
+        () => JumpShortConditional(!Less, "JNL"), // 0x6D, undocumented
+        () => JumpShortConditional(LessOrEqual, "JLE"), // 0x6E, undocumented
+        () => JumpShortConditional(!LessOrEqual, "JNLE"), // 0x6F, undocumented
         () => JumpShortConditional(OverflowFlag, "JO"), // 0x70
         () => JumpShortConditional(!OverflowFlag, "JNO"), // 0x71
         () => JumpShortConditional(CarryFlag, "JC"), // 0x72
@@ -241,22 +241,22 @@ namespace Masch._8086Emulator
         MoveRegisterImmediate16, // 0xBD
         MoveRegisterImmediate16, // 0xBE
         MoveRegisterImmediate16, // 0xBF
-        UnknownOpcode, // 0xC0
-        UnknownOpcode, // 0xC1
+        () => RetIntraSeg(ReadCodeWord()), // 0xC0, undocumented
+        () => RetIntraSeg(), // 0xC1, undocumented
         () => RetIntraSeg(ReadCodeWord()), // 0xC2
         () => RetIntraSeg(), // 0xC3
         Les, // 0xC4
         Lds, // 0xC5
         MovMemValue, // 0xC6
         MovMemValue, // 0xC7
-        UnknownOpcode, // 0xC8
-        UnknownOpcode, // 0xC9
+        () => RetInterSeg(ReadCodeWord()), // 0xC8, undocumented
+        () => RetInterSeg(), // 0xC9, undocumented
         () => RetInterSeg(ReadCodeWord()), // 0xCA
         () => RetInterSeg(), // 0xCB
         () => // 0xCC
         {
           SetDebug("INT", "3");
-          DoInt(InterruptVector.Breakpoint);
+          DoInt(InterruptVector.CpuBreakpoint);
         },
         () => // 0xCD
         {
@@ -272,7 +272,7 @@ namespace Masch._8086Emulator
         OpcodeGroup2, // 0xD3
         Aam, // 0xD4
         Aad, // 0xD5
-        UnknownOpcode, // 0xD6
+        () => AL = CarryFlag ? (byte)0xFF : (byte)0x00, // 0xD6, undocumented
         Xlat, // 0xD7
         Esc, // 0xD8
         Esc, // 0xD9
@@ -298,12 +298,12 @@ namespace Masch._8086Emulator
         },
         () => // 0xE6
         {
-          PortOut08(ReadCodeByte());
+          PortOut08(ReadCodeByte(), AL);
           clockCount += 10;
         },
         () => // 0xE7
         {
-          PortOut16(ReadCodeByte());
+          PortOut16(ReadCodeByte(), AX);
           clockCount += 10;
         },
         () => // 0xE8
@@ -356,19 +356,19 @@ namespace Masch._8086Emulator
         () => // 0xEE
         {
           SetDebug("OUT", "AL", "DX");
-          PortOut08(DX, false);
+          PortOut08(DX, AL, false);
 
           clockCount += 8;
         },
         () => // 0xEF
         {
           SetDebug("OUT", "AX", "DX");
-          PortOut16(DX, false);
+          PortOut16(DX, AX, false);
 
           clockCount += 8;
         },
         Lock, // 0xF0
-        UnknownOpcode, // 0xF1
+        () => {}, // 0xF1, undocumented (probably maps to Lock)
         () => // 0xF2
         {
           SetDebug("REPNE");
