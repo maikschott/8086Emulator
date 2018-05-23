@@ -1,4 +1,4 @@
-﻿namespace Masch._8086Emulator.InternalDevices
+﻿namespace Masch.Emulator8086.InternalDevices
 {
   public interface I16BitInternalDevice : IInternalDevice
   {

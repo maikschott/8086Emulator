@@ -2,9 +2,9 @@
 using System.Collections;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using Masch._8086Emulator.InternalDevices;
+using Masch.Emulator8086.InternalDevices;
 
-namespace Masch._8086Emulator.CPU
+namespace Masch.Emulator8086.CPU
 {
   public abstract class Cpu : CpuState
   {
@@ -243,7 +243,7 @@ namespace Masch._8086Emulator.CPU
         (x, y) => SetFlagsForLogicalOp(Width.Word, (ushort)func(x, y)));
     }
 
-    protected void HandleOpGroup(Func<byte, byte, byte?> func8, Func<ushort, ushort, ushort?> func16)
+    protected byte? HandleOpGroup(Func<byte, byte, byte?> func8, Func<ushort, ushort, ushort?> func16)
     {
       var relOpcode = opcodes[0] & 0b111;
       if (relOpcode == 4) // XXX AL, IMM8
@@ -253,7 +253,7 @@ namespace Masch._8086Emulator.CPU
 
         AL = func8(AL, value) ?? AL;
         clockCount += 4;
-        return;
+        return null;
       }
       if (relOpcode == 5) // XXX AX, IMM16
       {
@@ -262,7 +262,7 @@ namespace Masch._8086Emulator.CPU
 
         AX = func16(AX, value) ?? AX;
         clockCount += 4;
-        return;
+        return null;
       }
 
       var (mod, reg, rm) = ReadModRegRm();
@@ -283,7 +283,7 @@ namespace Masch._8086Emulator.CPU
       }
 
       var result = width == Width.Byte ? func8((byte)dst, (byte)src) : func16(dst, src);
-      if (result == null) { return; }
+      if (result == null) { return mod; }
 
       if (IsRegisterSource)
       {
@@ -295,6 +295,8 @@ namespace Masch._8086Emulator.CPU
         SetRegisterValue(width, reg, result.Value);
         clockCount += 9;
       }
+
+      return mod;
     }
 
     protected byte ReadCodeByte()

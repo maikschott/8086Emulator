@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
-namespace Masch._8086Emulator.InternalDevices
+namespace Masch.Emulator8086.InternalDevices
 {
   // ReSharper disable once InconsistentNaming
   [SuppressMessage("ReSharper", "UnusedMember.Local")]

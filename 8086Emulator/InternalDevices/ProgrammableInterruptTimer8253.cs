@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace Masch._8086Emulator.InternalDevices
+namespace Masch.Emulator8086.InternalDevices
 {
   // see https://wiki.osdev.org/Programmable_Interval_Timer
   public class ProgrammableInterruptTimer8253 : IInternalDevice

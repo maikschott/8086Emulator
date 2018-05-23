@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Masch._8086Emulator.InternalDevices
+namespace Masch.Emulator8086.InternalDevices
 {
   public class ParallelPort : IInternalDevice
   {

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Masch._8086Emulator.CPU
+namespace Masch.Emulator8086.CPU
 {
   public partial class Cpu8086 : Cpu
   {

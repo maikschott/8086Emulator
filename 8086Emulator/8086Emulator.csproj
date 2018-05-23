@@ -6,7 +6,7 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{2287CD2E-698C-40E1-99A3-6EE1F357B4B1}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Masch._8086Emulator</RootNamespace>
+    <RootNamespace>Masch.Emulator8086</RootNamespace>
     <AssemblyName>8086Emulator</AssemblyName>
     <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>

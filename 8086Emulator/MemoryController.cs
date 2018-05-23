@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 #endif
 
-namespace Masch._8086Emulator
+namespace Masch.Emulator8086
 {
   public class MemoryController
   {

@@ -4,9 +4,9 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using Masch._8086Emulator.InternalDevices;
+using Masch.Emulator8086.InternalDevices;
 
-namespace Masch._8086Emulator
+namespace Masch.Emulator8086
 {
   internal class Program
   {

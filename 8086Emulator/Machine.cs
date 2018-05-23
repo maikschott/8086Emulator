@@ -1,11 +1,12 @@
-﻿using System;
+﻿#define _SPEEDLIMIT
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using Masch._8086Emulator.CPU;
-using Masch._8086Emulator.InternalDevices;
+using Masch.Emulator8086.CPU;
+using Masch.Emulator8086.InternalDevices;
 
-namespace Masch._8086Emulator
+namespace Masch.Emulator8086
 {
   public class Machine
   {
@@ -62,15 +63,35 @@ namespace Masch._8086Emulator
       running = true;
       var watch = Stopwatch.StartNew();
       var opcodeCount = 0;
+
+#if SPEEDLIMIT
+      var lastElapsed = watch.Elapsed;
+      var lastClockCount = Cpu.ClockCount;
+      var measurementTime = TimeSpan.FromMilliseconds(10);
+#endif
+
       while (running)
       {
         Cpu.Tick();
         opcodeCount++;
-        Thread.Yield();
+
+#if SPEEDLIMIT
+        var elapsed = watch.Elapsed;
+        var realTime = elapsed - lastElapsed;
+        if (realTime >= measurementTime)
+        {
+          var cpuTime = TimeSpan.FromSeconds((Cpu.ClockCount - lastClockCount) / (double)Cpu.Frequency);
+          var waitTime = cpuTime - realTime;
+          if (waitTime >= TimeSpan.Zero) { Thread.Sleep(waitTime); }
+
+          lastElapsed = elapsed;
+          lastClockCount = Cpu.ClockCount;
+        }
+#endif
       }
       shutdownCts.Cancel();
       watch.Stop();
-      Console.WriteLine($"\r\nProcessed {opcodeCount:N0} opcodes in {watch.Elapsed} ({opcodeCount / watch.Elapsed.TotalSeconds:N0} op/s, {Cpu.ClockCount / watch.Elapsed.TotalSeconds / 1024 / 1024:F1} MHz)");
+      Console.WriteLine($"\r\nProcessed {opcodeCount:N0} opcodes in {watch.Elapsed} ({opcodeCount / watch.Elapsed.TotalSeconds:N0} op/s, {Cpu.ClockCount / watch.Elapsed.TotalSeconds / 1024 / 1024:F2} MHz)");
     }
 
     public void Stop()

@@ -1,4 +1,4 @@
-﻿namespace Masch._8086Emulator
+﻿namespace Masch.Emulator8086
 {
   public static class SpecialOffset
   {

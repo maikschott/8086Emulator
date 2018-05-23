@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Masch._8086Emulator.InternalDevices
+namespace Masch.Emulator8086.InternalDevices
 {
   [SuppressMessage("ReSharper", "InconsistentNaming")]
   public enum VideoMode : byte

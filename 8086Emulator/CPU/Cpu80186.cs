@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 
-namespace Masch._8086Emulator.CPU
+namespace Masch.Emulator8086.CPU
 {
   public class Cpu80186 : Cpu8086
   {
