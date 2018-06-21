@@ -168,7 +168,10 @@ namespace Masch.Emulator8086.InternalDevices
           if ((port & 0b11) == 2 && beepTask.IsCompleted)
           {
             // The sound should actually be played until it gets deactivated by a call to port 0x61
+#if NETCOREAPP
+#else
             beepTask = Task.Run(() => Console.Beep(Frequency / timer.InitialValue, 250));
+#endif
           }
         }
       }

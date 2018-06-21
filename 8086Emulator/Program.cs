@@ -29,6 +29,7 @@ namespace Masch.Emulator8086
       byte[] bios = null;
       byte[] program = null;
       var programAddr = 0;
+      // example: bios=ROMs/bios.bin program=ROMs/basic.bin@F600
       foreach (var parameter in parameters)
       {
         switch (parameter.Key)
@@ -36,9 +37,11 @@ namespace Masch.Emulator8086
           case "bios":
             bios = File.ReadAllBytes(parameter.Value);
             break;
+#if NETFRAMEWORK
           case "debugtoconsole":
             Debug.Listeners.Add(new ConsoleTraceListener(true));
             break;
+#endif
           case "program":
           {
             var parts = parameter.Value.Split('@');

@@ -62,22 +62,38 @@ namespace Masch.Emulator8086.InternalDevices
     private int rows;
     private bool cursorPositionChanged;
 
+#if NETCOREAPP
+    private readonly bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+#else
+    private const bool isWindows = true;
+#endif
+
     public CrtController6845(MemoryController memoryController, CancellationToken shutdownCancellationToken)
     {
       this.memoryController = memoryController;
-
       registers = new byte[0x12];
 
       ChangeResolution(TextStartOfs == SpecialOffset.ColorText ? VideoMode.Text80x25Color : VideoMode.Text80x25TextMonochrome);
-      SetConsoleOutputCP(437);
-      consoleHandle = GetStdHandle(StdOutputHandle);
+      if (isWindows)
+      {
+        SetConsoleOutputCP(437);
+        consoleHandle = GetStdHandle(StdOutputHandle);
+      }
+
       // task to copy the text video memory to the console buffer
       Task.Run(async () =>
       {
         while (!shutdownCancellationToken.IsCancellationRequested)
         {
           var task = Task.Delay(refreshDelay, shutdownCancellationToken);
-          CopyMemoryToConsoleBuffer();
+          if (isWindows)
+          {
+            CopyMemoryToConsoleBuffer();
+          }
+          else
+          {
+            WriteMemoryToConsole();
+          }
 
           if (cursorPositionChanged)
           {
@@ -171,9 +187,9 @@ namespace Masch.Emulator8086.InternalDevices
       }
     }
 
-    private static void ChangeCursorSize(byte cursorStart, byte cursorEnd)
+    private void ChangeCursorSize(byte cursorStart, byte cursorEnd)
     {
-      if (cursorStart > cursorEnd) { return; }
+      if (cursorStart > cursorEnd || !isWindows) { return; }
       Console.CursorSize = 100 * (cursorEnd - cursorStart + 1) / BlockHeight;
     }
 
@@ -186,8 +202,11 @@ namespace Masch.Emulator8086.InternalDevices
       else if (colors == 16) { fillTextBuffer = FillTextBuffer16; }
 
       buffer = new short[rows * columns * 2];
-      Console.SetWindowSize(columns, rows);
-      Console.BufferWidth = columns;
+      if (isWindows)
+      {
+        Console.SetWindowSize(columns, rows);
+        Console.BufferWidth = columns;
+      }
     }
 
     private void CopyMemoryToConsoleBuffer()
@@ -199,9 +218,54 @@ namespace Masch.Emulator8086.InternalDevices
       WriteConsoleOutput(consoleHandle, buffer, bufferWidth, bufferStart, ref writeRegion);
     }
 
+    private int CalcChecksum(short[] bytes)
+    {
+      var sum = 0;
+      unchecked
+      {
+        for (int i = 0; i < bytes.Length; i++) sum += bytes[i];
+      }
+      return sum;
+    }
+
+    private void WriteMemoryToConsole()
+    {
+      var oldCheckSum = CalcChecksum(buffer);
+      fillTextBuffer();
+      var newCheckSum = CalcChecksum(buffer);
+      if (oldCheckSum == newCheckSum) { return; }
+
+      var oldCursorX = Console.CursorLeft;
+      var oldCursorY = Console.CursorTop;
+
+      byte? oldColor = null;
+      var i = 0;
+      for (var y = 0; y < rows; y++)
+      {
+        Console.SetCursorPosition(0, y);
+        for (var x = 0; x < columns; x++)
+        {
+          var color = (byte)buffer[i + 1];
+          if (oldColor != color)
+          {
+            Console.BackgroundColor = (ConsoleColor)(color >> 4);
+            Console.ForegroundColor = (ConsoleColor)(color & 0xF);
+            oldColor = color;
+          }
+
+          var ch = (char)buffer[i];
+          if (ch >= 128) { ch = '\uFFFD'; } // Encoding 437 not supported on Linux and NuGet package System.Text.Encoding.CodePages won't load on startup
+          Console.Write(ch);
+          i += 2;
+        }
+      }
+
+      Console.SetCursorPosition(oldCursorX, oldCursorY);
+    }
+
     private void FillTextBuffer02()
     {
-      for (int i = 0; i < columns * rows; i++)
+      for (var i = 0; i < columns * rows; i++)
       {
         buffer[i * 2 + 0] = memoryController.ReadByte(TextStartOfs + pageOfs + i);
         buffer[i * 2 + 1] = (byte)ConsoleColor.Gray;
