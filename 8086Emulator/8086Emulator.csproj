@@ -1,76 +1,18 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{2287CD2E-698C-40E1-99A3-6EE1F357B4B1}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>Masch.Emulator8086</RootNamespace>
-    <AssemblyName>8086Emulator</AssemblyName>
-    <TargetFrameworkVersion>v4.7.1</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
+    <TargetFramework>net471</TargetFramework>
     <LangVersion>latest</LangVersion>
-    <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>
-    </DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-    <LangVersion>latest</LangVersion>
-    <Prefer32Bit>false</Prefer32Bit>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DefineConstants></DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="Microsoft.CSharp" />
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="CPU\Cpu80186.cs" />
-    <Compile Include="CPU\Cpu.cs" />
-    <Compile Include="InternalDevices\CMOSRealTimeClock.cs" />
-    <Compile Include="InternalDevices\ProgrammablePeripheralInterface8255.cs" />
-    <Compile Include="Irq.cs" />
-    <Compile Include="InternalDevices\FloppyDiskController8272.cs" />
-    <Compile Include="InternalDevices\CrtController6845.cs" />
-    <Compile Include="InternalDevices\I16BitInternalDevice.cs" />
-    <Compile Include="InternalDevices\ParallelPort.cs" />
-    <Compile Include="InternalDevices\ProgrammableInterruptController8259.cs" />
-    <Compile Include="CPU\Cpu8086.cs" />
-    <Compile Include="CPU\Cpu8086Opcodes.cs" />
-    <Compile Include="CPU\CpuState.cs" />
-    <Compile Include="InternalDevices\DMAController8237.cs" />
-    <Compile Include="InterruptVector.cs" />
-    <Compile Include="Machine.cs" />
-    <Compile Include="InternalDevices\IInternalDevice.cs" />
-    <Compile Include="MemoryController.cs" />
-    <Compile Include="InternalDevices\ProgrammableInterruptTimer8253.cs" />
-    <Compile Include="InternalDevices\SerialPort8250.cs" />
-    <Compile Include="Program.cs" />
-    <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="SpecialSegment.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="App.config" />
     <None Include="ROMs\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>
