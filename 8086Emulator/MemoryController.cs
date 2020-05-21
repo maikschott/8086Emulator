@@ -29,7 +29,7 @@ namespace Masch.Emulator8086
     public ushort ReadWord(int offset)
     {
       offset &= 0xFFFFF;
-      return (ushort) (Memory[offset] | (Memory[offset + 1] << 8));
+      return (ushort)(Memory[offset] | (Memory[offset + 1] << 8));
     }
 
 
@@ -41,16 +41,24 @@ namespace Masch.Emulator8086
     public void WriteByte(int offset, byte value)
     {
       offset &= 0xFFFFF;
-      if (offset > SpecialOffset.Bios) return;
+      if (offset > SpecialOffset.Bios)
+      {
+        return;
+      }
+
       Memory[offset] = value;
     }
 
     public void WriteWord(int offset, ushort value)
     {
       offset &= 0xFFFFF;
-      if (offset > SpecialOffset.Bios) return;
-      var lo = (byte) value;
-      var hi = (byte) (value >> 8);
+      if (offset > SpecialOffset.Bios)
+      {
+        return;
+      }
+
+      var lo = (byte)value;
+      var hi = (byte)(value >> 8);
       Memory[offset] = lo;
       Memory[offset + 1] = hi;
     }

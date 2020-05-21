@@ -1,12 +1,17 @@
 ﻿using System;
 using System.Diagnostics;
+using Masch.Emulator8086.InternalDevices;
 
 namespace Masch.Emulator8086.CPU
 {
   public class Cpu80186 : Cpu8086
   {
-    public Cpu80186(Machine machine)
-      : base(machine)
+    public Cpu80186(EventToken eventToken,
+      MemoryController memoryController,
+      DeviceManager devices,
+      ProgrammableInterruptTimer8253 pit,
+      ProgrammableInterruptController8259 pic)
+      : base(eventToken, memoryController, devices, pit, pic)
     {
     }
 
@@ -141,13 +146,13 @@ namespace Masch.Emulator8086.CPU
 
       if (width == Width.Byte)
       {
-        SetDebug($"INSB");
-        memory.WriteByte(dstAddr, PortIn08(DX, false));
+        SetDebug("INSB");
+        memoryController.WriteByte(dstAddr, PortIn08(DX, false));
       }
       else
       {
-        SetDebug($"INSW");
-        memory.WriteWord(dstAddr, PortIn16(DX, false));
+        SetDebug("INSW");
+        memoryController.WriteWord(dstAddr, PortIn16(DX, false));
       }
 
       DI += GetSourceOrDestDelta(width);
@@ -183,12 +188,12 @@ namespace Masch.Emulator8086.CPU
       var width = OpWidth;
       if (width == Width.Byte)
       {
-        SetDebug($"OUTSB");
+        SetDebug("OUTSB");
         PortOut08(DX, ReadDataByte(SI), false);
       }
       else
       {
-        SetDebug($"OUTSW");
+        SetDebug("OUTSW");
         PortOut16(DX, ReadDataWord(SI), false);
       }
 

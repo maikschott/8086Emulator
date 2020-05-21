@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Masch.Emulator8086.InternalDevices
 {
@@ -6,6 +7,8 @@ namespace Masch.Emulator8086.InternalDevices
   public interface IInternalDevice
   {
     IEnumerable<int> PortNumbers { get; }
+
+    Task Task => Task.CompletedTask;
 
     byte GetByte(int port);
     void SetByte(int port, byte value);

@@ -5,7 +5,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Masch.Emulator8086.InternalDevices
@@ -20,15 +19,18 @@ namespace Masch.Emulator8086.InternalDevices
     private const int VK_LMENU = 0xA4; // Alt left
     private const int VK_RMENU = 0xA5; // Alt right
     private readonly byte[] data = new byte[4];
+    private readonly bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     private readonly ProgrammableInterruptController8259 pic;
     private readonly ProgrammableInterruptTimer8253 pit;
     private bool resetRequested;
-    private readonly bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
 
-    public ProgrammablePeripheralInterface8255(Machine machine, CancellationToken shutdownCancellationToken)
+    public ProgrammablePeripheralInterface8255(EventToken eventToken,
+      MemoryController memoryController,
+      ProgrammableInterruptTimer8253 pit,
+      ProgrammableInterruptController8259 pic)
     {
-      pic = machine.Pic;
-      pit = machine.Pit;
+      this.pic = pic;
+      this.pit = pit;
       // IBM PC BIOS fetches the LSB of the Equipment Word from Port 0x60.
       // - Bits 5-4: 0=EGA, 1=CGA 40x25, 2=CGA 80x25, 3=MDA
       // - Bits 3-2=(value + 4) << 12 is memory size (undocumented, but used during POST).
@@ -36,7 +38,9 @@ namespace Masch.Emulator8086.InternalDevices
       data[0] = SenseInfo;
       Console.TreatControlCAsInput = true;
 
-      Task.Run(async () =>
+      var shutdownCancellationToken = eventToken.ShutDown.Token;
+
+      Task = Task.Run(async () =>
       {
         byte[] scanCodes;
         if (isWindows)
@@ -46,7 +50,8 @@ namespace Masch.Emulator8086.InternalDevices
         else
         {
           Dictionary<int, int> linuxScanCodes = ReadLinuxScanCodes();
-          scanCodes = Enumerable.Range(0, 256).Select(x => linuxScanCodes.TryGetValue(x, out var scanCode) ? (byte)scanCode : (byte)0).ToArray();
+          scanCodes = Enumerable.Range(0, 256)
+            .Select(x => linuxScanCodes.TryGetValue(x, out var scanCode) ? (byte)scanCode : (byte)0).ToArray();
         }
 
         while (!shutdownCancellationToken.IsCancellationRequested)
@@ -54,14 +59,17 @@ namespace Masch.Emulator8086.InternalDevices
           await Task.Delay(50, shutdownCancellationToken).ConfigureAwait(false);
 
           if (!Console.KeyAvailable) { continue; }
+
           var consoleKeyInfo = Console.ReadKey(true);
 
           if (consoleKeyInfo.Modifiers == (ConsoleModifiers.Control | ConsoleModifiers.Alt))
           {
-            if (consoleKeyInfo.Key == ConsoleKey.C) { machine.Stop(); }
+            if (consoleKeyInfo.Key == ConsoleKey.C) { eventToken.Halt.Cancel(); }
             else if (consoleKeyInfo.Key == ConsoleKey.M)
             {
-              await File.WriteAllBytesAsync(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Memory.bin"), machine.MemoryController.Memory, shutdownCancellationToken);
+              await File.WriteAllBytesAsync(
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Memory.bin"),
+                memoryController.Memory, shutdownCancellationToken);
             }
           }
 
@@ -70,6 +78,7 @@ namespace Masch.Emulator8086.InternalDevices
             PutKey(scanCodes[VK_LSHIFT]);
             await Task.Delay(20, shutdownCancellationToken).ConfigureAwait(false);
           }
+
           PutKey(scanCodes[(byte)consoleKeyInfo.Key]);
           if (consoleKeyInfo.Modifiers.HasFlag(ConsoleModifiers.Shift))
           {
@@ -80,11 +89,57 @@ namespace Masch.Emulator8086.InternalDevices
       });
     }
 
+    public IEnumerable<int> PortNumbers => Enumerable.Range(0x60, 4);
+
+    public Task Task { get; }
+
+    public byte GetByte(int port)
+    {
+      var result = data[port & 0b11];
+
+      if (resetRequested && port == 0x60)
+      {
+        data[0] = SenseInfo;
+        resetRequested = false;
+      }
+
+      return result;
+    }
+
+    public void SetByte(int port, byte value)
+    {
+      data[port & 0b11] = value;
+
+      // used in IBM PC at BIOS POST, which does the following sequence to reset the keyboard:
+      // - send 0x0C: SET KBD CLK LINE LOW
+      // - wait 20ms
+      // - send 0xCC: SET CLK, ENABLE LINES HIGH
+      // - send 0x4C: SET KBD CLK HIGH, ENABLE LOW
+      // - keyboard will reset and respond with scancode 0xAA
+      if (port == 0x61 && value == 0x4C)
+      {
+        resetRequested = true;
+        pit.PostAction(() => PutKey(0xAA)); // reset scancode
+      }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern int MapVirtualKey(int code, int mapType);
+
+    private void PutKey(byte scanCode)
+    {
+      if ((scanCode & 0x7F) == 0) { return; }
+
+      data[0] = scanCode;
+      pic.Invoke(Irq.Keyboard);
+    }
+
     private Dictionary<int, int> ReadLinuxScanCodes()
     {
       var result = new Dictionary<int, int>();
 
-      var keyCodes = Enum.GetValues(typeof(ConsoleKey)).Cast<ConsoleKey>().ToDictionary(x => x.ToString(), x => (int)x, StringComparer.OrdinalIgnoreCase);
+      var keyCodes = Enum.GetValues(typeof(ConsoleKey)).Cast<ConsoleKey>()
+        .ToDictionary<ConsoleKey, string, int>(x => x.ToString(), x => (int)x, StringComparer.OrdinalIgnoreCase);
       keyCodes.Add("LeftShift", VK_LSHIFT);
       keyCodes.Add("RightShift", VK_RSHIFT);
       keyCodes.Add("LeftCtrl", VK_LCONTROL);
@@ -136,7 +191,10 @@ namespace Masch.Emulator8086.InternalDevices
                 break;
             }
           }
-          else if (keyName.Equals("Space", StringComparison.OrdinalIgnoreCase)) { keyName = ConsoleKey.Spacebar.ToString(); }
+          else if (keyName.Equals("Space", StringComparison.OrdinalIgnoreCase))
+          {
+            keyName = ConsoleKey.Spacebar.ToString();
+          }
 
           if (keyCodes.TryGetValue(keyName, out var keyCode))
           {
@@ -148,50 +206,8 @@ namespace Masch.Emulator8086.InternalDevices
       {
         Debug.WriteLine($"Failed to read key code mapping: {e.Message}", "error");
       }
-      return result;
-    }
-
-    public IEnumerable<int> PortNumbers => Enumerable.Range(0x60, 4);
-
-    public byte GetByte(int port)
-    {
-      var result = data[port & 0b11];
-
-      if (resetRequested && port == 0x60)
-      {
-        data[0] = SenseInfo;
-        resetRequested = false;
-      }
 
       return result;
-    }
-
-    public void SetByte(int port, byte value)
-    {
-      data[port & 0b11] = value;
-
-      // used in IBM PC at BIOS POST, which does the following sequence to reset the keyboard:
-      // - send 0x0C: SET KBD CLK LINE LOW
-      // - wait 20ms
-      // - send 0xCC: SET CLK, ENABLE LINES HIGH
-      // - send 0x4C: SET KBD CLK HIGH, ENABLE LOW
-      // - keyboard will reset and respond with scancode 0xAA
-      if (port == 0x61 && value == 0x4C)
-      {
-        resetRequested = true;
-        pit.PostAction(() => PutKey(0xAA)); // reset scancode
-      }
-    }
-
-    [DllImport("user32.dll")]
-    private static extern int MapVirtualKey(int code, int mapType);
-
-    private void PutKey(byte scanCode)
-    {
-      if ((scanCode & 0x7F) == 0) { return; }
-
-      data[0] = scanCode;
-      pic.Invoke(Irq.Keyboard);
     }
   }
 }

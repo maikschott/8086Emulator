@@ -22,7 +22,13 @@ namespace Masch.Emulator8086.InternalDevices
     private class FutureAction
     {
       public int Ticks;
-      public Action Action;
+      public readonly Action Action;
+
+      public FutureAction(int ticks, Action action)
+      {
+        Ticks = ticks;
+        Action = action;
+      }
     }
 
     public ProgrammableInterruptTimer8253(ProgrammableInterruptController8259 pic)
@@ -36,12 +42,12 @@ namespace Masch.Emulator8086.InternalDevices
 
     public void PostAction(Action action, int delayTicks = 100)
     {
-      futureActions.Add(new FutureAction { Ticks = delayTicks, Action = action });
+      futureActions.Add(new FutureAction(delayTicks, action));
     }
 
     public void PostAction(Action action, TimeSpan delay)
     {
-      futureActions.Add(new FutureAction { Ticks = (int)(delay.TotalSeconds * Frequency), Action = action });
+      futureActions.Add(new FutureAction((int)(delay.TotalSeconds * Frequency), action));
     }
 
     public int SpeakerFrequency
@@ -235,7 +241,9 @@ namespace Masch.Emulator8086.InternalDevices
     private enum AccessType
     {
       Latch,
+      // ReSharper disable once UnusedMember.Local
       LoValue,
+      // ReSharper disable once UnusedMember.Local
       HiValue,
       LoHiValue
     }

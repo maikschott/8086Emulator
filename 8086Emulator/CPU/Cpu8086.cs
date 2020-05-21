@@ -1,12 +1,22 @@
 ﻿using System;
+using Masch.Emulator8086.InternalDevices;
 
 namespace Masch.Emulator8086.CPU
 {
   public partial class Cpu8086 : Cpu
   {
-    public Cpu8086(Machine machine)
-      : base(machine)
+    private readonly EventToken eventToken;
+    private readonly DeviceManager devices;
+
+    public Cpu8086(EventToken eventToken,
+      MemoryController memoryController,
+      DeviceManager devices,
+      ProgrammableInterruptTimer8253 pit,
+      ProgrammableInterruptController8259 pic)
+      : base(memoryController, pit, pic)
     {
+      this.eventToken = eventToken;
+      this.devices = devices;
     }
 
     protected override Action[] RegisterOperations()
@@ -368,7 +378,7 @@ namespace Masch.Emulator8086.CPU
           clockCount += 8;
         },
         Lock, // 0xF0
-        () => {}, // 0xF1, undocumented (probably maps to Lock)
+        () => { }, // 0xF1, undocumented (probably maps to Lock)
         () => // 0xF2
         {
           SetDebug("REPNE");
