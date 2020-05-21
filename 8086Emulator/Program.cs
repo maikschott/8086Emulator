@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -37,11 +36,7 @@ namespace Masch.Emulator8086
           case "bios":
             bios = File.ReadAllBytes(parameter.Value);
             break;
-#if NETFRAMEWORK
-          case "debugtoconsole":
-            Debug.Listeners.Add(new ConsoleTraceListener(true));
-            break;
-#endif
+
           case "program":
           {
             var parts = parameter.Value.Split('@');

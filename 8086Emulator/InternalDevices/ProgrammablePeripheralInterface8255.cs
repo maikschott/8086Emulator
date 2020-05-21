@@ -23,11 +23,7 @@ namespace Masch.Emulator8086.InternalDevices
     private readonly ProgrammableInterruptController8259 pic;
     private readonly ProgrammableInterruptTimer8253 pit;
     private bool resetRequested;
-#if NETCOREAPP
     private readonly bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
-#else
-    private const bool isWindows = true;
-#endif
 
     public ProgrammablePeripheralInterface8255(Machine machine, CancellationToken shutdownCancellationToken)
     {
@@ -65,9 +61,7 @@ namespace Masch.Emulator8086.InternalDevices
             if (consoleKeyInfo.Key == ConsoleKey.C) { machine.Stop(); }
             else if (consoleKeyInfo.Key == ConsoleKey.M)
             {
-              var memory = new byte[SpecialOffset.HighMemoryArea];
-              machine.MemoryController.ReadBlock(0, memory, memory.Length);
-              File.WriteAllBytes(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Memory.bin"), memory);
+              await File.WriteAllBytesAsync(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "Memory.bin"), machine.MemoryController.Memory, shutdownCancellationToken);
             }
           }
 

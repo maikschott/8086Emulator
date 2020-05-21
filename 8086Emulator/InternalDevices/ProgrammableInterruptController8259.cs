@@ -21,9 +21,8 @@ namespace Masch.Emulator8086.InternalDevices
 
     public (InterruptVector? interrupt, Action eoi) GetIrq()
     {
-      for (var i = 0; i < priorities.Length; i++)
+      foreach (var irq in priorities)
       {
-        var irq = priorities[i];
         var irqMask = 1 << irq;
         if ((requestRegister & irqMask) != 0)
         {

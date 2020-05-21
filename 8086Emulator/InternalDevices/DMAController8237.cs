@@ -150,8 +150,8 @@ namespace Masch.Emulator8086.InternalDevices
             channel.AddressDecrement = false;
             channel.AutoInit = false;
             channel.Masked = true;
-            channel.Mode = default(Mode);
-            channel.Operation = default(Operation);
+            channel.Mode = default;
+            channel.Operation = default;
           });
           statusRegister = 0;
           //commandRegister = CommandRegister.None;

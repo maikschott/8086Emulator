@@ -17,7 +17,7 @@ namespace Masch.Emulator8086.InternalDevices
     private readonly ProgrammableInterruptController8259 pic;
     private readonly Timer[] timers;
     private readonly List<FutureAction> futureActions = new List<FutureAction>();
-    private Task beepTask = Task.CompletedTask;
+    private readonly Task beepTask = Task.CompletedTask;
 
     private class FutureAction
     {
@@ -235,11 +235,7 @@ namespace Masch.Emulator8086.InternalDevices
     private enum AccessType
     {
       Latch,
-
-      // ReSharper disable once UnusedMember.Local
       LoValue,
-
-      // ReSharper disable once UnusedMember.Local
       HiValue,
       LoHiValue
     }

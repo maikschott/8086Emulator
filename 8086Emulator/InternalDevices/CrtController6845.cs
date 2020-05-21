@@ -45,9 +45,9 @@ namespace Masch.Emulator8086.InternalDevices
 
     //private static readonly int[] mdaPorts = Enumerable.Range(0x3B0, 13).ToArray();
     //private static readonly int[] egaPorts = Enumerable.Range(0x3C0, 16).ToArray();
-    private static readonly int[] cgaPorts = Enumerable.Range(0x3D0, 12).ToArray();
+    private static readonly int[] CgaPorts = Enumerable.Range(0x3D0, 12).ToArray();
 
-    private static readonly TimeSpan refreshDelay = TimeSpan.FromSeconds(1 / 60d); // 60 Hz
+    private static readonly TimeSpan RefreshDelay = TimeSpan.FromSeconds(1 / 60d); // 60 Hz
 
     private readonly IntPtr consoleHandle;
     private readonly MemoryController memoryController;
@@ -85,7 +85,7 @@ namespace Masch.Emulator8086.InternalDevices
       {
         while (!shutdownCancellationToken.IsCancellationRequested)
         {
-          var task = Task.Delay(refreshDelay, shutdownCancellationToken);
+          var task = Task.Delay(RefreshDelay, shutdownCancellationToken);
           if (isWindows)
           {
             CopyMemoryToConsoleBuffer();
@@ -110,7 +110,7 @@ namespace Masch.Emulator8086.InternalDevices
       /*mdaPorts
       .Append(HerculesConfigurationSwitchRegister)
       .Concat(egaPorts)
-      .Concat*/cgaPorts;
+      .Concat*/CgaPorts;
 
     public byte GetByte(int port)
     {
