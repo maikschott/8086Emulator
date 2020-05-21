@@ -1,17 +1,18 @@
 ﻿using System;
-using System.Diagnostics;
 using Masch.Emulator8086.InternalDevices;
+using Microsoft.Extensions.Logging;
 
 namespace Masch.Emulator8086.CPU
 {
   public class Cpu80186 : Cpu8086
   {
-    public Cpu80186(EventToken eventToken,
+    public Cpu80186(ILogger<Cpu80186> logger,
+      EventToken eventToken,
       MemoryController memoryController,
       DeviceManager devices,
       ProgrammableInterruptTimer8253 pit,
       ProgrammableInterruptController8259 pic)
-      : base(eventToken, memoryController, devices, pit, pic)
+      : base(logger, eventToken, memoryController, devices, pit, pic)
     {
     }
 
@@ -53,7 +54,7 @@ namespace Masch.Emulator8086.CPU
 
     protected void UnknownOpcode()
     {
-      Debug.WriteLine($"Opcode {opcodes[0]:X2} not supported", "Warning");
+      logger.LogWarning("{0}", $"Opcode {opcodes[0]:X2} not supported");
       DoInt(InterruptVector.CpuInvalidOpcode);
     }
 

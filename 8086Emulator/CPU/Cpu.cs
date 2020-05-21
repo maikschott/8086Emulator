@@ -3,6 +3,7 @@ using System.Collections;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Masch.Emulator8086.InternalDevices;
+using Microsoft.Extensions.Logging;
 
 namespace Masch.Emulator8086.CPU
 {
@@ -12,9 +13,10 @@ namespace Masch.Emulator8086.CPU
     public const int Frequency = ProgrammableInterruptTimer8253.Frequency * TimerTickMultiplier; // 4.77 MHz
     protected readonly string?[] debug = new string[4];
 
+    protected readonly ILogger logger;
     protected readonly MemoryController memoryController;
-    private readonly ProgrammableInterruptTimer8253 pit;
-    private readonly ProgrammableInterruptController8259 pic;
+    protected readonly ProgrammableInterruptTimer8253 pit;
+    protected readonly ProgrammableInterruptController8259 pic;
     protected readonly byte[] opcodes = new byte[6];
     private readonly Action[] operations;
     private readonly BitArray parity;
@@ -28,11 +30,12 @@ namespace Masch.Emulator8086.CPU
     protected byte opcodeIndex;
     protected bool? repeatWhileNotZero;
 
-    protected Cpu(
+    protected Cpu(ILogger logger,
       MemoryController memoryController,
       ProgrammableInterruptTimer8253 pit,
       ProgrammableInterruptController8259 pic)
     {
+      this.logger = logger;
       this.memoryController = memoryController;
       this.pic = pic;
       this.pit = pit;
@@ -425,7 +428,7 @@ namespace Masch.Emulator8086.CPU
 
     protected virtual void UnknownOpcode(byte mod, byte reg, byte rm)
     {
-      Debug.WriteLine($"Opcode {opcodes[0]:X2}{(mod << 6) | (reg << 3) | rm:X2} not supported", "Warning");
+      logger.LogWarning("{0}", $"Opcode {opcodes[0]:X2}{(mod << 6) | (reg << 3) | rm:X2} not supported");
     }
 
     protected void WriteDataByte(int addr, byte value)
@@ -502,7 +505,7 @@ namespace Masch.Emulator8086.CPU
 
       if (debug[0] is { } debug0 && !debug0.StartsWith("[F000"))
       {
-        Debug.WriteLine($"{debug[0]} {debug[1]} {debug[2]}{(debug[3] != null ? "," + debug[3] : null)}");
+        logger.LogTrace("{0}", $"{debug[0]} {debug[1]} {debug[2]}{(debug[3] != null ? "," + debug[3] : null)}");
       }
     }
 

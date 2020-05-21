@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Masch.Emulator8086.CPU;
 using Masch.Emulator8086.InternalDevices;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace Masch.Emulator8086
 {
@@ -19,15 +20,12 @@ namespace Masch.Emulator8086
 
       IServiceCollection serviceCollection = new ServiceCollection();
       ConfigureServices(serviceCollection);
-      var services = serviceCollection.BuildServiceProvider();
+      await using var services = serviceCollection.BuildServiceProvider();
 
-      if (args.Length == 0)
-      {
-        return;
-      }
+      if (!args.Any()) { return; }
 
       var parameters = args
-        .Select(arg => arg.Split(new[] {'='}, 2))
+        .Select(arg => arg.Split(new[] { '=' }, 2))
         .ToDictionary(x => x[0], x => x.Length == 2 ? x[1] : null);
 
       HandleProgramArguments(parameters, out var bios, out var program, out var programAddr);
@@ -53,6 +51,8 @@ namespace Masch.Emulator8086
 
     private static void ConfigureServices(IServiceCollection serviceCollection)
     {
+      serviceCollection.AddLogging(loggingBuilder => loggingBuilder.AddDebug().AddConsole());
+
       serviceCollection.AddSingleton<Machine>();
       serviceCollection.AddSingleton<EventToken>();
       serviceCollection.AddSingleton<MemoryController>();
@@ -72,15 +72,23 @@ namespace Masch.Emulator8086
       serviceCollection.AddSingleton<IInternalDevice>(sp => sp.GetRequiredService<CrtController6845>());
       serviceCollection.AddSingleton<IInternalDevice>(sp => sp.GetRequiredService<DMAController8237>());
       serviceCollection.AddSingleton<IInternalDevice>(sp => sp.GetRequiredService<ProgrammableInterruptTimer8253>());
-      serviceCollection.AddSingleton<IInternalDevice>(sp => sp.GetRequiredService<ProgrammablePeripheralInterface8255>());
-      serviceCollection.AddSingleton<IInternalDevice>(sp => sp.GetRequiredService<ProgrammableInterruptController8259>());
+      serviceCollection.AddSingleton<IInternalDevice>(
+        sp => sp.GetRequiredService<ProgrammablePeripheralInterface8255>());
+      serviceCollection.AddSingleton<IInternalDevice>(
+        sp => sp.GetRequiredService<ProgrammableInterruptController8259>());
       //serviceCollection.AddSingleton<IInternalDevice>(sp => sp.GetRequiredService<ParallelPort>());
       //serviceCollection.AddSingleton<IInternalDevice>(sp => sp.GetRequiredService<SerialPort8250>());
       //serviceCollection.AddSingleton<IInternalDevice>(sp => sp.GetRequiredService<FloppyDiskController8272>());
     }
 
-    private static void HandleProgramArguments(Dictionary<string, string?> parameters, out byte[]? bios,
-      out byte[]? program, out int programAddr)
+    private static void CurrentDomainOnUnhandledException(object sender,
+      UnhandledExceptionEventArgs unhandledExceptionEventArgs)
+    {
+      Console.Error.WriteLine(unhandledExceptionEventArgs.ExceptionObject);
+    }
+
+    private static void HandleProgramArguments(Dictionary<string, string?> parameters,
+      out byte[]? bios, out byte[]? program, out int programAddr)
     {
       bios = null;
       program = null;
@@ -120,12 +128,8 @@ namespace Masch.Emulator8086
       }
     }
 
-    private static void CurrentDomainOnUnhandledException(object sender, UnhandledExceptionEventArgs unhandledExceptionEventArgs)
-    {
-      Console.Error.WriteLine(unhandledExceptionEventArgs.ExceptionObject);
-    }
-
-    private static void TaskSchedulerOnUnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs unobservedTaskExceptionEventArgs)
+    private static void TaskSchedulerOnUnobservedTaskException(object? sender,
+      UnobservedTaskExceptionEventArgs unobservedTaskExceptionEventArgs)
     {
       Console.Error.WriteLine(unobservedTaskExceptionEventArgs.Exception);
     }

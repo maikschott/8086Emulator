@@ -1,5 +1,6 @@
 ﻿using System;
 using Masch.Emulator8086.InternalDevices;
+using Microsoft.Extensions.Logging;
 
 namespace Masch.Emulator8086.CPU
 {
@@ -8,12 +9,13 @@ namespace Masch.Emulator8086.CPU
     private readonly EventToken eventToken;
     private readonly DeviceManager devices;
 
-    public Cpu8086(EventToken eventToken,
+    public Cpu8086(ILogger<Cpu8086> logger,
+      EventToken eventToken,
       MemoryController memoryController,
       DeviceManager devices,
       ProgrammableInterruptTimer8253 pit,
       ProgrammableInterruptController8259 pic)
-      : base(memoryController, pit, pic)
+      : base(logger, memoryController, pit, pic)
     {
       this.eventToken = eventToken;
       this.devices = devices;

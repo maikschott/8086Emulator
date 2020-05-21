@@ -6,23 +6,31 @@ using System.Threading;
 using System.Threading.Tasks;
 using Masch.Emulator8086.CPU;
 using Masch.Emulator8086.InternalDevices;
+using Microsoft.Extensions.Logging;
 
 namespace Masch.Emulator8086
 {
   public class Machine
   {
     private readonly Cpu cpu;
-    private readonly MemoryController memoryController;
-    private readonly EventToken eventToken;
     private readonly DeviceManager deviceManager;
+    private readonly EventToken eventToken;
+    private readonly ILogger<Machine> logger;
+    private readonly MemoryController memoryController;
     private bool running;
 
-    public Machine(Cpu cpu, MemoryController memoryController, EventToken eventToken, DeviceManager deviceManager)
+    public Machine(
+      Cpu cpu,
+      MemoryController memoryController,
+      EventToken eventToken,
+      DeviceManager deviceManager,
+      ILogger<Machine> logger)
     {
       this.cpu = cpu;
       this.memoryController = memoryController;
       this.eventToken = eventToken;
       this.deviceManager = deviceManager;
+      this.logger = logger;
     }
 
     public void LoadAndSetBootstrapper(int segment, byte[] bytes)
@@ -38,6 +46,7 @@ namespace Masch.Emulator8086
     public void LoadProgram(int segment, byte[] bytes)
     {
       if (segment < 0 || segment > ushort.MaxValue) { throw new ArgumentOutOfRangeException(nameof(segment)); }
+
       if (bytes == null) { throw new ArgumentNullException(nameof(bytes)); }
 
       memoryController.WriteBlock(segment << 4, bytes, bytes.Length);
@@ -64,12 +73,12 @@ namespace Masch.Emulator8086
       var measurementTime = TimeSpan.FromMilliseconds(10);
 #endif
 
-      await using (eventToken.Halt.Token.Register(() => running = false))
+      await using var tokenRegistration = eventToken.Halt.Token.Register(() => running = false);
+
+      while (running)
       {
-        while (running)
-        {
-          cpu.Tick();
-          opcodeCount++;
+        cpu.Tick();
+        opcodeCount++;
 
 #if SPEEDLIMIT
         var elapsed = watch.Elapsed;
@@ -84,15 +93,16 @@ namespace Masch.Emulator8086
           lastClockCount = Cpu.ClockCount;
         }
 #endif
-        }
       }
 
       eventToken.ShutDown.Cancel();
 
-      await Task.WhenAll(deviceManager.Select(x => x.Task).ToArray()).ContinueWith(task => {}, TaskContinuationOptions.OnlyOnCanceled);
+      await Task.WhenAll(deviceManager.Select(x => x.Task).ToArray())
+        .ContinueWith(task => { }, TaskContinuationOptions.OnlyOnCanceled);
 
       watch.Stop();
-      Console.WriteLine($"\r\nProcessed {opcodeCount:N0} opcodes in {watch.Elapsed} ({opcodeCount / watch.Elapsed.TotalSeconds:N0} op/s, {cpu.ClockCount / watch.Elapsed.TotalSeconds / 1024 / 1024:F2} MHz)");
+      logger.LogInformation("{0}",
+        $"\r\nProcessed {opcodeCount:N0} opcodes in {watch.Elapsed} ({opcodeCount / watch.Elapsed.TotalSeconds:N0} op/s, {cpu.ClockCount / watch.Elapsed.TotalSeconds / 1024 / 1024:F2} MHz)");
     }
   }
 }

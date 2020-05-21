@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace Masch.Emulator8086.InternalDevices
 {
@@ -20,15 +20,18 @@ namespace Masch.Emulator8086.InternalDevices
     private const int VK_RMENU = 0xA5; // Alt right
     private readonly byte[] data = new byte[4];
     private readonly bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+    private readonly ILogger<ProgrammablePeripheralInterface8255> logger;
     private readonly ProgrammableInterruptController8259 pic;
     private readonly ProgrammableInterruptTimer8253 pit;
     private bool resetRequested;
 
-    public ProgrammablePeripheralInterface8255(EventToken eventToken,
+    public ProgrammablePeripheralInterface8255(ILogger<ProgrammablePeripheralInterface8255> logger,
+      EventToken eventToken,
       MemoryController memoryController,
       ProgrammableInterruptTimer8253 pit,
       ProgrammableInterruptController8259 pic)
     {
+      this.logger = logger;
       this.pic = pic;
       this.pit = pit;
       // IBM PC BIOS fetches the LSB of the Equipment Word from Port 0x60.
@@ -204,7 +207,7 @@ namespace Masch.Emulator8086.InternalDevices
       }
       catch (Exception e)
       {
-        Debug.WriteLine($"Failed to read key code mapping: {e.Message}", "error");
+        logger.LogError("{0}", $"Failed to read key code mapping: {e.Message}");
       }
 
       return result;
