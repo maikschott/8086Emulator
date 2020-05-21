@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
 
 namespace Masch.Emulator8086.InternalDevices
@@ -41,43 +40,59 @@ namespace Masch.Emulator8086.InternalDevices
     private const int RegisterCursorAddrHi = 0x0E;
     private const int RegisterCursorAddrLo = 0x0F;
     private const int BlockHeight = 8;
-    public static int TextStartOfs = SpecialOffset.ColorText;
+    public static int textStartOfs = SpecialOffset.ColorText;
 
     //private static readonly int[] mdaPorts = Enumerable.Range(0x3B0, 13).ToArray();
     //private static readonly int[] egaPorts = Enumerable.Range(0x3C0, 16).ToArray();
-    private static readonly int[] cgaPorts = Enumerable.Range(0x3D0, 12).ToArray();
-
-    private static readonly TimeSpan refreshDelay = TimeSpan.FromSeconds(1 / 60d); // 60 Hz
+    private static readonly int[] CgaPorts = Enumerable.Range(0x3D0, 12).ToArray();
+    private static readonly TimeSpan RefreshDelay = TimeSpan.FromSeconds(1 / 60d); // 60 Hz
 
     private readonly IntPtr consoleHandle;
+    private readonly bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
     private readonly MemoryController memoryController;
     private readonly byte[] registers;
     private short[] buffer;
     private int colors;
     private int columns;
+    private bool cursorPositionChanged;
     private Action fillTextBuffer;
     private bool graphicMode;
     private int pageOfs;
     private byte registerIndex, stateIndex;
     private int rows;
-    private bool cursorPositionChanged;
 
-    public CrtController6845(MemoryController memoryController, CancellationToken shutdownCancellationToken)
+    public CrtController6845(MemoryController memoryController, EventToken eventToken)
     {
       this.memoryController = memoryController;
-
       registers = new byte[0x12];
+      buffer = Array.Empty<short>();
+      fillTextBuffer = () => { };
 
-      ChangeResolution(TextStartOfs == SpecialOffset.ColorText ? VideoMode.Text80x25Color : VideoMode.Text80x25TextMonochrome);
-      SetConsoleOutputCP(437);
-      consoleHandle = GetStdHandle(StdOutputHandle);
+      ChangeResolution(textStartOfs == SpecialOffset.ColorText ?
+        VideoMode.Text80x25Color :
+        VideoMode.Text80x25TextMonochrome);
+      if (isWindows)
+      {
+        SetConsoleOutputCP(437);
+        consoleHandle = GetStdHandle(StdOutputHandle);
+      }
+
+      var shutdownCancellationToken = eventToken.ShutDown.Token;
+
       // task to copy the text video memory to the console buffer
-      Task.Run(async () =>
+      Task = Task.Run(async () =>
       {
         while (!shutdownCancellationToken.IsCancellationRequested)
         {
-          var task = Task.Delay(refreshDelay, shutdownCancellationToken);
-          CopyMemoryToConsoleBuffer();
+          var task = Task.Delay(RefreshDelay, shutdownCancellationToken);
+          if (isWindows)
+          {
+            CopyMemoryToConsoleBuffer();
+          }
+          else
+          {
+            WriteMemoryToConsole();
+          }
 
           if (cursorPositionChanged)
           {
@@ -85,7 +100,7 @@ namespace Masch.Emulator8086.InternalDevices
             SetCursorPosition((registers[RegisterCursorAddrHi] << 8) | registers[RegisterCursorAddrLo]);
           }
 
-          await task.ConfigureAwait(false);
+          await task;
         }
       });
     }
@@ -94,7 +109,9 @@ namespace Masch.Emulator8086.InternalDevices
       /*mdaPorts
       .Append(HerculesConfigurationSwitchRegister)
       .Concat(egaPorts)
-      .Concat*/cgaPorts;
+      .Concat*/CgaPorts;
+
+    public Task Task { get; }
 
     public byte GetByte(int port)
     {
@@ -107,6 +124,7 @@ namespace Masch.Emulator8086.InternalDevices
         case 0x3D5:
         case 0x3D7:
           if (registerIndex < 0x10) { return registers[registerIndex]; }
+
           break;
         case 0x3D8:
           return 0b0000_0001;
@@ -122,6 +140,7 @@ namespace Masch.Emulator8086.InternalDevices
             case 2:
               return 0b0001;
           }
+
           break;
       }
 
@@ -165,15 +184,31 @@ namespace Masch.Emulator8086.InternalDevices
                 break;
             }
           }
+
           break;
         case 0x3D8: // CGA mode control register
           break;
       }
     }
 
-    private static void ChangeCursorSize(byte cursorStart, byte cursorEnd)
+    private int CalcChecksum(short[] bytes)
     {
-      if (cursorStart > cursorEnd) { return; }
+      var sum = 0;
+      unchecked
+      {
+        for (var i = 0; i < bytes.Length; i++)
+        {
+          sum += bytes[i];
+        }
+      }
+
+      return sum;
+    }
+
+    private void ChangeCursorSize(byte cursorStart, byte cursorEnd)
+    {
+      if (cursorStart > cursorEnd || !isWindows) { return; }
+
       Console.CursorSize = 100 * (cursorEnd - cursorStart + 1) / BlockHeight;
     }
 
@@ -184,33 +219,41 @@ namespace Masch.Emulator8086.InternalDevices
 
       if (colors == 2) { fillTextBuffer = FillTextBuffer02; }
       else if (colors == 16) { fillTextBuffer = FillTextBuffer16; }
+      else { fillTextBuffer = () => { }; }
 
       buffer = new short[rows * columns * 2];
-      Console.SetWindowSize(columns, rows);
-      Console.BufferWidth = columns;
+      if (isWindows)
+      {
+        Console.SetWindowSize(columns, rows);
+        Console.BufferWidth = columns;
+      }
     }
 
     private void CopyMemoryToConsoleBuffer()
     {
       fillTextBuffer();
-      var bufferWidth = new Coord { X = (short)columns, Y = (short)rows };
+      var bufferWidth = new Coord {X = (short)columns, Y = (short)rows};
       var bufferStart = Coord.Zero;
-      var writeRegion = new SmallRect { Left = bufferStart.X, Top = bufferStart.Y, Right = (short)(bufferWidth.X - 1), Bottom = (short)(bufferWidth.Y - 1) };
+      var writeRegion = new SmallRect
+      {
+        Left = bufferStart.X, Top = bufferStart.Y, Right = (short)(bufferWidth.X - 1),
+        Bottom = (short)(bufferWidth.Y - 1)
+      };
       WriteConsoleOutput(consoleHandle, buffer, bufferWidth, bufferStart, ref writeRegion);
     }
 
     private void FillTextBuffer02()
     {
-      for (int i = 0; i < columns * rows; i++)
+      for (var i = 0; i < columns * rows; i++)
       {
-        buffer[i * 2 + 0] = memoryController.ReadByte(TextStartOfs + pageOfs + i);
+        buffer[i * 2 + 0] = memoryController.ReadByte(textStartOfs + pageOfs + i);
         buffer[i * 2 + 1] = (byte)ConsoleColor.Gray;
       }
     }
 
     private void FillTextBuffer16()
     {
-      memoryController.ReadBlock(TextStartOfs + pageOfs, buffer, buffer.Length);
+      memoryController.ReadBlock(textStartOfs + pageOfs, buffer, buffer.Length);
     }
 
     private static (int columns, int rows, bool graphics, int colors) GetVideoParameters(VideoMode value)
@@ -257,7 +300,47 @@ namespace Masch.Emulator8086.InternalDevices
     {
       var row = Math.DivRem(cursorAddr, columns, out var col);
       if (row >= rows) { row = rows - 1; }
+
       Console.SetCursorPosition(col, row);
+    }
+
+    private void WriteMemoryToConsole()
+    {
+      var oldCheckSum = CalcChecksum(buffer);
+      fillTextBuffer();
+      var newCheckSum = CalcChecksum(buffer);
+      if (oldCheckSum == newCheckSum) { return; }
+
+      var oldCursorX = Console.CursorLeft;
+      var oldCursorY = Console.CursorTop;
+
+      byte? oldColor = null;
+      var i = 0;
+      for (var y = 0; y < rows; y++)
+      {
+        Console.SetCursorPosition(0, y);
+        for (var x = 0; x < columns; x++)
+        {
+          var color = (byte)buffer[i + 1];
+          if (oldColor != color)
+          {
+            Console.BackgroundColor = (ConsoleColor)(color >> 4);
+            Console.ForegroundColor = (ConsoleColor)(color & 0xF);
+            oldColor = color;
+          }
+
+          var ch = (char)buffer[i];
+          if (ch >= 128)
+          {
+            ch = '\uFFFD';
+          } // Encoding 437 not supported on Linux and NuGet package System.Text.Encoding.CodePages won't load on startup
+
+          Console.Write(ch);
+          i += 2;
+        }
+      }
+
+      Console.SetCursorPosition(oldCursorX, oldCursorY);
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -287,7 +370,8 @@ namespace Masch.Emulator8086.InternalDevices
     private static extern bool SetConsoleOutputCP(int codePage);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
-    private static extern bool WriteConsoleOutput(IntPtr hConsoleOutput, short[] lpBuffer, Coord dwBufferSize, Coord dwBufferCoord, ref SmallRect lpWriteRegion);
+    private static extern bool WriteConsoleOutput(IntPtr hConsoleOutput, short[] lpBuffer, Coord dwBufferSize,
+      Coord dwBufferCoord, ref SmallRect lpWriteRegion);
 
     #endregion
   }

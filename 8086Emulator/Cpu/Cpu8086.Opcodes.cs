@@ -23,8 +23,10 @@ namespace Masch.Emulator8086.CPU
             tmpcf = (dst & msb) != 0;
             dst <<= 1;
             if (tmpcf) { dst |= 1; }
+
             CarryFlag = tmpcf;
           }
+
           break;
         case 1:
           SetDebug("ROR");
@@ -35,8 +37,10 @@ namespace Masch.Emulator8086.CPU
             tmpcf = (dst & 1) != 0;
             dst >>= 1;
             if (tmpcf) { dst |= msb; }
+
             CarryFlag = tmpcf;
           }
+
           break;
         case 2:
           SetDebug("RCL");
@@ -49,6 +53,7 @@ namespace Masch.Emulator8086.CPU
             dst <<= 1;
             if (tmpcf) { dst |= 1; }
           }
+
           break;
         case 3:
           SetDebug("RCR");
@@ -61,6 +66,7 @@ namespace Masch.Emulator8086.CPU
             dst >>= 1;
             if (tmpcf) { dst |= msb; }
           }
+
           break;
         case 4:
         case 6: // undocumented
@@ -74,6 +80,7 @@ namespace Masch.Emulator8086.CPU
             SetFlagsForLogicalOp(width, dst);
             CarryFlag = tmpcf;
           }
+
           break;
         case 5:
           SetDebug("SHR");
@@ -86,6 +93,7 @@ namespace Masch.Emulator8086.CPU
             SetFlagsForLogicalOp(width, dst);
             CarryFlag = tmpcf;
           }
+
           break;
         case 7:
           SetDebug("SAR");
@@ -101,23 +109,25 @@ namespace Masch.Emulator8086.CPU
             SetFlagsForLogicalOp(width, dst);
             CarryFlag = tmpcf;
           }
+
           break;
         default:
           UnknownOpcode(mod, reg, rm);
           return;
       }
+
       WriteToRegisterOrMemory(width, mod, rm, () => dst);
 
       var isSigned = (dst & msb) != 0;
       OverflowFlag = wasSigned != isSigned;
     }
 
-    protected override void DoInt(InterruptVector interruptVector, Action flagAction = null)
+    protected override void DoInt(InterruptVector interruptVector, Action? flagAction = null)
     {
       Push(GetFlags());
       flagAction?.Invoke();
       var tableOfs = (byte)interruptVector * 4;
-      DoCall(memory.ReadWord(tableOfs), memory.ReadWord(tableOfs + 2));
+      DoCall(memoryController.ReadWord(tableOfs), memoryController.ReadWord(tableOfs + 2));
 
       clockCount += 51;
       if (opcodes[0] == 0xCC) { clockCount++; }
@@ -144,7 +154,7 @@ namespace Masch.Emulator8086.CPU
 
     protected ushort Pop()
     {
-      var value = memory.ReadWord((SS << 4) + SP);
+      var value = memoryController.ReadWord((SS << 4) + SP);
       SP += 2;
       return value;
     }
@@ -153,55 +163,56 @@ namespace Masch.Emulator8086.CPU
     {
       if (setDebug) { SetDebug("IN", "AL", port.ToString("X2")); }
 
-      return machine.Ports.TryGetValue(port, out var handler) ? handler.GetByte(port) : (byte)0;
+      return devices[port]?.GetByte(port) ?? 0;
     }
 
     protected ushort PortIn16(ushort port, bool setDebug = true)
     {
       if (setDebug) { SetDebug("IN", "AX", port.ToString("X2")); }
 
-      if (machine.Ports.TryGetValue(port, out var handler))
+      var handler = devices[port];
+      if (handler == null)
       {
-        if (handler is I16BitInternalDevice wordHandler)
-        {
-          return wordHandler.GetWord(port);
-        }
-
-        return (ushort)(handler.GetByte(port) | (handler.GetByte(port + 1) << 8));
+        return 0;
       }
 
-      return 0;
+      if (handler is I16BitInternalDevice wordHandler)
+      {
+        return wordHandler.GetWord(port);
+      }
+
+      return (ushort)(handler.GetByte(port) | (handler.GetByte(port + 1) << 8));
     }
 
     protected void PortOut08(ushort port, byte value, bool setDebug = true)
     {
       if (setDebug) { SetDebug("OUT", port.ToString("X2"), "AL"); }
 
-      if (machine.Ports.TryGetValue(port, out var handler)) { handler.SetByte(port, value); }
+      devices[port]?.SetByte(port, value);
     }
 
     protected void PortOut16(ushort port, ushort value, bool setDebug = true)
     {
       if (setDebug) { SetDebug("OUT", port.ToString("X2"), "AX"); }
 
-      if (machine.Ports.TryGetValue(port, out var handler))
+      var handler = devices[port];
+      if (handler == null) { return; }
+
+      if (handler is I16BitInternalDevice wordHandler)
       {
-        if (handler is I16BitInternalDevice wordHandler)
-        {
-          wordHandler.SetWord(port, value);
-        }
-        else
-        {
-          handler.SetByte(port, (byte)value);
-          handler.SetByte(port + 1, (byte)(value >> 8));
-        }
+        wordHandler.SetWord(port, value);
+      }
+      else
+      {
+        handler.SetByte(port, (byte)value);
+        handler.SetByte(port + 1, (byte)(value >> 8));
       }
     }
 
     protected void Push(ushort value)
     {
       SP -= 2;
-      memory.WriteWord((SS << 4) + SP, value);
+      memoryController.WriteWord((SS << 4) + SP, value);
     }
 
     // ReSharper disable once InconsistentNaming
@@ -238,6 +249,7 @@ namespace Masch.Emulator8086.CPU
       {
         AuxiliaryCarryFlag = CarryFlag = false;
       }
+
       AL &= 0x0F;
 
       clockCount += 4;
@@ -249,6 +261,7 @@ namespace Masch.Emulator8086.CPU
       // value != 10 was undocumented up until the Pentium
       var value = ReadCodeByte();
       if (value != 10) { SetDebugSourceThenTarget(value.ToString("X2")); }
+
       AX = (byte)(AH * value + AL);
       SetFlagsFromValue(Width.Byte, AL);
 
@@ -260,6 +273,7 @@ namespace Masch.Emulator8086.CPU
       SetDebug("AAM");
       var value = ReadCodeByte();
       if (value != 10) { SetDebugSourceThenTarget(value.ToString("X2")); }
+
       if (value == 0)
       {
         DoInt(InterruptVector.CpuDivideByZero);
@@ -288,6 +302,7 @@ namespace Masch.Emulator8086.CPU
       {
         AuxiliaryCarryFlag = CarryFlag = false;
       }
+
       AL &= 0x0F;
 
       clockCount += 4;
@@ -372,14 +387,14 @@ namespace Masch.Emulator8086.CPU
       if (width == Width.Byte)
       {
         SetDebug("CMPSB");
-        var dst = memory.ReadByte((ES << 4) + DI);
+        var dst = memoryController.ReadByte((ES << 4) + DI);
         var src = ReadDataByte(SI);
         Sub08(src, dst);
       }
       else
       {
         SetDebug("CMPSW");
-        var dst = memory.ReadWord((ES << 4) + DI);
+        var dst = memoryController.ReadWord((ES << 4) + DI);
         var src = ReadDataWord(SI);
         Sub16(src, dst);
       }
@@ -417,6 +432,7 @@ namespace Masch.Emulator8086.CPU
       {
         AuxiliaryCarryFlag = false;
       }
+
       if (oldal > 0x99 || oldcf)
       {
         AL += 0x60;
@@ -448,6 +464,7 @@ namespace Masch.Emulator8086.CPU
       {
         AuxiliaryCarryFlag = false;
       }
+
       if (oldal > 0x99 || oldcf)
       {
         AL -= 0x60;
@@ -457,6 +474,7 @@ namespace Masch.Emulator8086.CPU
       {
         CarryFlag = false;
       }
+
       SetFlagsFromValue(Width.Byte, AL);
 
       clockCount += 4;
@@ -497,7 +515,7 @@ namespace Masch.Emulator8086.CPU
     {
       loop = null;
       SetDebug("HLT");
-      machine.Stop();
+      eventToken.Halt.Cancel();
 
       clockCount += 2;
     }
@@ -567,8 +585,8 @@ namespace Masch.Emulator8086.CPU
       SetDebug("LDS");
       var (mod, reg, rm) = ReadModRegRm();
       var addr = GetEffectiveAddress(mod, rm);
-      Registers[reg] = memory.ReadWord(addr);
-      DS = memory.ReadWord(addr + 2);
+      Registers[reg] = memoryController.ReadWord(addr);
+      DS = memoryController.ReadWord(addr + 2);
 
       clockCount += 16;
     }
@@ -588,8 +606,8 @@ namespace Masch.Emulator8086.CPU
       SetDebug("LES");
       var (mod, reg, rm) = ReadModRegRm();
       var addr = GetEffectiveAddress(mod, rm);
-      Registers[reg] = memory.ReadWord(addr);
-      ES = memory.ReadWord(addr + 2);
+      Registers[reg] = memoryController.ReadWord(addr);
+      ES = memoryController.ReadWord(addr + 2);
 
       clockCount += 16;
     }
@@ -767,6 +785,7 @@ namespace Masch.Emulator8086.CPU
         UnknownOpcode(mod, reg, rm);
         return;
       }
+
       SetSegmentRegisterValue(segReg, ReadFromRegisterOrMemory(Width.Word, mod, rm));
       SetDebugSourceThenTarget(segReg.ToString());
 
@@ -780,13 +799,13 @@ namespace Masch.Emulator8086.CPU
 
       if (width == Width.Byte)
       {
-        SetDebug($"MOVSB");
-        memory.WriteByte(dstAddr, ReadDataByte(SI));
+        SetDebug("MOVSB");
+        memoryController.WriteByte(dstAddr, ReadDataByte(SI));
       }
       else
       {
-        SetDebug($"MOVSW");
-        memory.WriteWord(dstAddr, ReadDataWord(SI));
+        SetDebug("MOVSW");
+        memoryController.WriteWord(dstAddr, ReadDataWord(SI));
       }
 
       SI += GetSourceOrDestDelta(width);
@@ -892,6 +911,7 @@ namespace Masch.Emulator8086.CPU
           SetDebug("CMP");
           if (dstWidth == Width.Byte) { Sub08((byte)dst, (byte)src); }
           else { Sub16(dst, src); }
+
           break;
         }
       }
@@ -964,6 +984,7 @@ namespace Masch.Emulator8086.CPU
               WriteToRegisterOrMemory(width, mod, rm, () => Sub16(0, src));
             }
           }
+
           CarryFlag = src != 0;
 
           clockCount += mod == 0b11 ? 3 : 16;
@@ -986,6 +1007,7 @@ namespace Masch.Emulator8086.CPU
 
             clockCount += mod == 0b11 ? (133 - 118) / 2 : (139 - 124) / 2;
           }
+
           break;
         case 5:
           SetDebug("IMUL");
@@ -1003,6 +1025,7 @@ namespace Masch.Emulator8086.CPU
 
             clockCount += mod == 0b11 ? (104 - 86) / 2 : (160 - 134) / 2;
           }
+
           break;
         case 6:
           SetDebug("DIV");
@@ -1038,6 +1061,7 @@ namespace Masch.Emulator8086.CPU
 
             clockCount += mod == 0b11 ? (162 - 144) / 2 : (168 - 150) / 2;
           }
+
           break;
         case 7:
           SetDebug("IDIV");
@@ -1075,6 +1099,7 @@ namespace Masch.Emulator8086.CPU
 
             clockCount += mod == 0b11 ? (184 - 165) / 2 : (190 - 171) / 2;
           }
+
           break;
         default:
           UnknownOpcode(mod, reg, rm);
@@ -1152,7 +1177,9 @@ namespace Masch.Emulator8086.CPU
             UnknownOpcode(mod, reg, rm);
             break;
           }
-          DoCall(memory.ReadWord(currentEffectiveAddress.Value), memory.ReadWord(currentEffectiveAddress.Value + 2));
+
+          DoCall(memoryController.ReadWord(currentEffectiveAddress.Value),
+            memoryController.ReadWord(currentEffectiveAddress.Value + 2));
 
           clockCount += 37;
           break;
@@ -1171,7 +1198,9 @@ namespace Masch.Emulator8086.CPU
             UnknownOpcode(mod, reg, rm);
             break;
           }
-          DoJmp(memory.ReadWord(currentEffectiveAddress.Value), memory.ReadWord(currentEffectiveAddress.Value + 2));
+
+          DoJmp(memoryController.ReadWord(currentEffectiveAddress.Value),
+            memoryController.ReadWord(currentEffectiveAddress.Value + 2));
 
           clockCount += 24;
           break;
@@ -1317,13 +1346,13 @@ namespace Masch.Emulator8086.CPU
       if (width == Width.Byte)
       {
         SetDebug("SCASB");
-        var dst = memory.ReadByte(addr);
+        var dst = memoryController.ReadByte(addr);
         Sub08(AL, dst);
       }
       else
       {
         SetDebug("SCASW");
-        var dst = memory.ReadWord(addr);
+        var dst = memoryController.ReadWord(addr);
         Sub16(AX, dst);
       }
 
@@ -1341,12 +1370,12 @@ namespace Masch.Emulator8086.CPU
       if (width == Width.Byte)
       {
         SetDebug("STOSB");
-        memory.WriteByte(addr, AL);
+        memoryController.WriteByte(addr, AL);
       }
       else
       {
         SetDebug("STOSW");
-        memory.WriteWord(addr, AX);
+        memoryController.WriteWord(addr, AX);
       }
 
       DI += GetSourceOrDestDelta(width);

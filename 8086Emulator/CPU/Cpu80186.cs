@@ -1,12 +1,18 @@
 ﻿using System;
-using System.Diagnostics;
+using Masch.Emulator8086.InternalDevices;
+using Microsoft.Extensions.Logging;
 
 namespace Masch.Emulator8086.CPU
 {
   public class Cpu80186 : Cpu8086
   {
-    public Cpu80186(Machine machine)
-      : base(machine)
+    public Cpu80186(ILogger<Cpu80186> logger,
+      EventToken eventToken,
+      MemoryController memoryController,
+      DeviceManager devices,
+      ProgrammableInterruptTimer8253 pit,
+      ProgrammableInterruptController8259 pic)
+      : base(logger, eventToken, memoryController, devices, pit, pic)
     {
     }
 
@@ -48,7 +54,7 @@ namespace Masch.Emulator8086.CPU
 
     protected void UnknownOpcode()
     {
-      Debug.WriteLine($"Opcode {opcodes[0]:X2} not supported", "Warning");
+      logger.LogWarning("{0}", $"Opcode {opcodes[0]:X2} not supported");
       DoInt(InterruptVector.CpuInvalidOpcode);
     }
 
@@ -141,13 +147,13 @@ namespace Masch.Emulator8086.CPU
 
       if (width == Width.Byte)
       {
-        SetDebug($"INSB");
-        memory.WriteByte(dstAddr, PortIn08(DX, false));
+        SetDebug("INSB");
+        memoryController.WriteByte(dstAddr, PortIn08(DX, false));
       }
       else
       {
-        SetDebug($"INSW");
-        memory.WriteWord(dstAddr, PortIn16(DX, false));
+        SetDebug("INSW");
+        memoryController.WriteWord(dstAddr, PortIn16(DX, false));
       }
 
       DI += GetSourceOrDestDelta(width);
@@ -183,12 +189,12 @@ namespace Masch.Emulator8086.CPU
       var width = OpWidth;
       if (width == Width.Byte)
       {
-        SetDebug($"OUTSB");
+        SetDebug("OUTSB");
         PortOut08(DX, ReadDataByte(SI), false);
       }
       else
       {
-        SetDebug($"OUTSW");
+        SetDebug("OUTSW");
         PortOut16(DX, ReadDataWord(SI), false);
       }
 

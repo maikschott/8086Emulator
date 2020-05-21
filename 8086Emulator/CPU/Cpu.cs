@@ -3,6 +3,7 @@ using System.Collections;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Masch.Emulator8086.InternalDevices;
+using Microsoft.Extensions.Logging;
 
 namespace Masch.Emulator8086.CPU
 {
@@ -10,10 +11,12 @@ namespace Masch.Emulator8086.CPU
   {
     public const int TimerTickMultiplier = 4;
     public const int Frequency = ProgrammableInterruptTimer8253.Frequency * TimerTickMultiplier; // 4.77 MHz
-    protected readonly string[] debug = new string[4];
+    protected readonly string?[] debug = new string[4];
 
-    protected readonly Machine machine;
-    protected readonly MemoryController memory;
+    protected readonly ILogger logger;
+    protected readonly MemoryController memoryController;
+    protected readonly ProgrammableInterruptTimer8253 pit;
+    protected readonly ProgrammableInterruptController8259 pic;
     protected readonly byte[] opcodes = new byte[6];
     private readonly Action[] operations;
     private readonly BitArray parity;
@@ -22,15 +25,20 @@ namespace Masch.Emulator8086.CPU
     protected int? currentEffectiveAddress;
     protected SegmentRegister? dataSegmentRegister;
     protected bool dataSegmentRegisterChanged;
-    protected Action irqReturnAction;
+    protected Action? irqReturnAction;
     protected (int loopStart, int loopEnd)? loop;
     protected byte opcodeIndex;
     protected bool? repeatWhileNotZero;
 
-    protected Cpu(Machine machine)
+    protected Cpu(ILogger logger,
+      MemoryController memoryController,
+      ProgrammableInterruptTimer8253 pit,
+      ProgrammableInterruptController8259 pic)
     {
-      this.machine = machine;
-      memory = machine.MemoryController;
+      this.logger = logger;
+      this.memoryController = memoryController;
+      this.pic = pic;
+      this.pit = pit;
 
       // ReSharper disable once VirtualMemberCallInConstructor
       operations = RegisterOperations();
@@ -85,7 +93,7 @@ namespace Masch.Emulator8086.CPU
       {
         for (var i = cpuTickOfLastPitTick; i < clockCount; i += TimerTickMultiplier)
         {
-          machine.Pit.Tick();
+          pit.Tick();
           cpuTickOfLastPitTick = i;
         }
       }
@@ -100,7 +108,7 @@ namespace Masch.Emulator8086.CPU
       //if (IP == 0xE4DC) Debugger.Break();
 
       currentEffectiveAddress = null;
-      memory.ReadBlock((CS << 4) + IP, opcodes, 6);
+      memoryController.ReadBlock((CS << 4) + IP, opcodes, 6);
       opcodeIndex = 0;
       var opcode = ReadCodeByte();
       operations[opcode]();
@@ -114,11 +122,11 @@ namespace Masch.Emulator8086.CPU
       if (TrapFlag) { DoInt(InterruptVector.CpuDebug); } // has lowest interrupt priority
     }
 
-    protected abstract void DoInt(InterruptVector interruptVector, Action flagAction = null);
+    protected abstract void DoInt(InterruptVector interruptVector, Action? flagAction = null);
 
     protected int GetEffectiveAddress(byte mod, byte rm, bool useSegment = true)
     {
-      string addrText = null;
+      string? addrText = null;
       ushort disp = 0;
       if (mod == 0b01)
       {
@@ -313,17 +321,17 @@ namespace Masch.Emulator8086.CPU
 
     protected byte ReadDataByte(int addr)
     {
-      return memory.ReadByte((DataSegment << 4) + (ushort)addr);
+      return memoryController.ReadByte((DataSegment << 4) + (ushort)addr);
     }
 
     protected ushort ReadDataWord(int addr)
     {
-      return memory.ReadWord((DataSegment << 4) + (ushort)addr);
+      return memoryController.ReadWord((DataSegment << 4) + (ushort)addr);
     }
 
     protected ushort ReadFromMemory(Width width, int effectiveAddress)
     {
-      return width == Width.Byte ? memory.ReadByte(effectiveAddress) : memory.ReadWord(effectiveAddress);
+      return width == Width.Byte ? memoryController.ReadByte(effectiveAddress) : memoryController.ReadWord(effectiveAddress);
     }
 
     protected ushort ReadFromRegisterOrMemory(Width width, byte mod, byte rm)
@@ -347,7 +355,7 @@ namespace Masch.Emulator8086.CPU
 
     [Conditional("TRACE")]
     [DebuggerStepThrough]
-    protected void SetDebug(params string[] text)
+    protected void SetDebug(params string?[] text)
     {
       Array.Copy(text, 0, debug, 1, text.Length);
     }
@@ -420,28 +428,28 @@ namespace Masch.Emulator8086.CPU
 
     protected virtual void UnknownOpcode(byte mod, byte reg, byte rm)
     {
-      Debug.WriteLine($"Opcode {opcodes[0]:X2}{(mod << 6) | (reg << 3) | rm:X2} not supported", "Warning");
+      logger.LogWarning("{0}", $"Opcode {opcodes[0]:X2}{(mod << 6) | (reg << 3) | rm:X2} not supported");
     }
 
     protected void WriteDataByte(int addr, byte value)
     {
-      memory.WriteByte((DataSegment << 4) + (ushort)addr, value);
+      memoryController.WriteByte((DataSegment << 4) + (ushort)addr, value);
     }
 
     protected void WriteDataWord(int addr, ushort value)
     {
-      memory.WriteWord((DataSegment << 4) + (ushort)addr, value);
+      memoryController.WriteWord((DataSegment << 4) + (ushort)addr, value);
     }
 
     protected void WriteToMemory(Width width, int effectiveAddress, ushort value)
     {
       if (width == Width.Byte)
       {
-        memory.WriteByte(effectiveAddress, (byte)value);
+        memoryController.WriteByte(effectiveAddress, (byte)value);
       }
       else
       {
-        memory.WriteWord(effectiveAddress, value);
+        memoryController.WriteWord(effectiveAddress, value);
       }
     }
 
@@ -490,14 +498,14 @@ namespace Masch.Emulator8086.CPU
         }
         loop = null;
       }
-      if (repeatWhileNotZero != null && !debug[1].StartsWith("REP"))
+      if (repeatWhileNotZero != null && !debug[1]?.StartsWith("REP") == true)
       {
         return;
       }
 
-      if (debug[0] != null && !debug[0].StartsWith("[F000"))
+      if (debug[0] is { } debug0 && !debug0.StartsWith("[F000"))
       {
-        Debug.WriteLine($"{debug[0]} {debug[1]} {debug[2]}{(debug[3] != null ? "," + debug[3] : null)}");
+        logger.LogTrace("{0}", $"{debug[0]} {debug[1]} {debug[2]}{(debug[3] != null ? "," + debug[3] : null)}");
       }
     }
 
@@ -505,7 +513,7 @@ namespace Masch.Emulator8086.CPU
     {
       if (!InterruptEnableFlag) { return; }
 
-      var (irq, endOfInterrupt) = machine.Pic.GetIrq();
+      var (irq, endOfInterrupt) = pic.GetIrq();
       if (irq == null) { return; }
 
       var oldDataSegmentRegister = dataSegmentRegister;
@@ -524,7 +532,7 @@ namespace Masch.Emulator8086.CPU
         repeatWhileNotZero = oldRepeat;
         loop = oldIsLooping;
 
-        endOfInterrupt();
+        endOfInterrupt?.Invoke();
       };
     }
 

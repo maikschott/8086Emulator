@@ -12,6 +12,7 @@ namespace Masch.Emulator8086.InternalDevices
     private const int ChannelCount = 4;
 
     private readonly Channel[] channels;
+
     //private CommandRegister commandRegister;
     //private byte requestRegister;
     private byte statusRegister;
@@ -44,6 +45,7 @@ namespace Masch.Emulator8086.InternalDevices
           {
             result = (byte)channel.Address;
           }
+
           channel.Flipflop = !channel.Flipflop;
           break;
         }
@@ -61,6 +63,7 @@ namespace Masch.Emulator8086.InternalDevices
           {
             result = (byte)channel.Count;
           }
+
           channel.Flipflop = !channel.Flipflop;
           break;
         }
@@ -69,10 +72,11 @@ namespace Masch.Emulator8086.InternalDevices
           statusRegister &= 0xF0;
           break;
         case 0x0A: // channel 0-3 mask register
-          for (int i = 0; i < ChannelCount; i++)
+          for (var i = 0; i < ChannelCount; i++)
           {
             if (channels[i].Masked) { result |= (byte)(1 << i); }
           }
+
           break;
       }
 
@@ -97,6 +101,7 @@ namespace Masch.Emulator8086.InternalDevices
           {
             channel.Address = (ushort)((channel.Address & 0xFF00) | value);
           }
+
           channel.Flipflop = !channel.Flipflop;
           break;
         }
@@ -114,6 +119,7 @@ namespace Masch.Emulator8086.InternalDevices
           {
             channel.Count = (ushort)((channel.Count & 0xFF00) | value);
           }
+
           channel.Flipflop = !channel.Flipflop;
           break;
         }
@@ -150,8 +156,8 @@ namespace Masch.Emulator8086.InternalDevices
             channel.AddressDecrement = false;
             channel.AutoInit = false;
             channel.Masked = true;
-            channel.Mode = default(Mode);
-            channel.Operation = default(Operation);
+            channel.Mode = default;
+            channel.Operation = default;
           });
           statusRegister = 0;
           //commandRegister = CommandRegister.None;
@@ -165,6 +171,7 @@ namespace Masch.Emulator8086.InternalDevices
           {
             channels[i].Masked = (value & (1 << i)) != 0;
           }
+
           break;
       }
     }

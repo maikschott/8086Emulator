@@ -7,7 +7,7 @@ namespace Masch.Emulator8086.InternalDevices
   // see https://wiki.osdev.org/PIC
   public class ProgrammableInterruptController8259 : IInternalDevice
   {
-    private readonly byte[] priorities = { 0, 1, 8, 9, 10, 11, 12, 13, 14, 15, 3, 4, 5, 6, 7 };
+    private readonly byte[] priorities = {0, 1, 8, 9, 10, 11, 12, 13, 14, 15, 3, 4, 5, 6, 7};
     private bool autoEoi;
     private bool icw4Needed;
     private int icwIndex;
@@ -19,11 +19,10 @@ namespace Masch.Emulator8086.InternalDevices
 
     IEnumerable<int> IInternalDevice.PortNumbers => Enumerable.Range(0x20, 2).Concat(Enumerable.Range(0xA0, 2));
 
-    public (InterruptVector? interrupt, Action eoi) GetIrq()
+    public (InterruptVector? interrupt, Action? eoi) GetIrq()
     {
-      for (var i = 0; i < priorities.Length; i++)
+      foreach (var irq in priorities)
       {
-        var irq = priorities[i];
         var irqMask = 1 << irq;
         if ((requestRegister & irqMask) != 0)
         {
@@ -92,6 +91,7 @@ namespace Masch.Emulator8086.InternalDevices
           {
             var irq = value & 0b111;
             if (port == 0xA0) { irq += 8; }
+
             inServiceRegister &= ~(1 << irq);
           }
         }
