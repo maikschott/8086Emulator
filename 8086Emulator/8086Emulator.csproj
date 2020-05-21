@@ -6,6 +6,12 @@
     <RootNamespace>Masch.Emulator8086</RootNamespace>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+    <DefineConstants></DefineConstants>
+  </PropertyGroup>
   <ItemGroup>
     <None Include="ROMs\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
