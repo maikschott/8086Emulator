@@ -207,7 +207,7 @@ namespace Masch.Emulator8086.InternalDevices
       }
       catch (Exception e)
       {
-        logger.LogError("{0}", $"Failed to read key code mapping: {e.Message}");
+        logger.LogError(e, "Failed to read key code mapping");
       }
 
       return result;
